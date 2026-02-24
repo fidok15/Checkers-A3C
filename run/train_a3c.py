@@ -2,7 +2,6 @@ import sys
 import os
 
 # --- HACK NA ŚCIEŻKI ---
-# Umożliwia import modułu deepdraughts z poziomu folderu run/
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(os.path.dirname(current_dir)) 
 sys.path.append(root_dir)
@@ -25,17 +24,21 @@ from deepdraughts.env import Game, game_is_over, game_winner
 from deepdraughts.net_pytorch import PolicyValueNet
 from shared_adam import SharedAdam
 
-# --- KONFIGURACJA TRENINGU ---
+# --- PARAMETRY TRENINGU (DOSTROIŁEM POD TYDZIEŃ NAUKI) ---
 SAVE_DIR = "./savedata_a3c"
 CHECKPOINT_FILE = "a3c_draughts_checkpoint.pth"
 LOG_FILE = "training_log.csv"
-NUM_WORKERS = mp.cpu_count()  # Używa wszystkich dostępnych rdzeni
-MAX_EPISODES = 1000000
-SAVE_INTERVAL_SEC = 600       # Zapis co 10 minut
-UPDATE_GLOBAL_ITER = 10       # Aktualizacja sieci co 10 kroków
-GAMMA = 0.99                  # Discount factor
-ENTROPY_BETA = 0.01           # Współczynnik eksploracji (im wyższy, tym więcej losowości)
-LR = 0.0001                   # Learning rate
+
+# Wyświetlanie w konsoli co 50 gier (żeby nie spamowało)
+PRINT_INTERVAL = 50 
+
+NUM_WORKERS = mp.cpu_count()
+MAX_EPISODES = 50000000      
+SAVE_INTERVAL_SEC = 600      
+UPDATE_GLOBAL_ITER = 20      
+GAMMA = 0.99                  
+ENTROPY_BETA = 0.05          
+LR = 0.0001                  
 
 class Worker(mp.Process):
     def __init__(self, global_net, optimizer, global_ep, global_ep_r, res_queue, name, env_args):
@@ -44,22 +47,21 @@ class Worker(mp.Process):
         self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
         self.g_net = global_net
         self.opt = optimizer
-        self.env_args = env_args
-        self.env = Game(**env_args)
+        
+        # Inicjalizacja gry bez argumentów (domyślne Russian/64)
+        self.env = Game() 
+        
         nsize, _, n_states, n_actions = env_args
+        self.env_net_params = (nsize, n_states, n_actions)
         self.l_net = PolicyValueNet(nsize, n_states, n_actions)
 
     def run(self):
-        # Każdy worker działa na 1 wątku, aby nie blokować CPU przy wielu procesach
         torch.set_num_threads(1)
         total_step = 1
         
         while self.g_ep.value < MAX_EPISODES:
-            # Synchronizacja z siecią globalną
             self.l_net.load_state_dict(self.g_net.state_dict())
-            
-            # Reset środowiska (tworzenie nowej gry)
-            self.env = Game(**self.env_args)
+            self.env = Game() # Reset gry
             
             buffer_s, buffer_a, buffer_r = [], [], []
             ep_r = 0
@@ -75,7 +77,7 @@ class Worker(mp.Process):
                 legal_moves = self.env.get_all_available_moves()
                 legal_ids = [m.id() for m in legal_moves]
                 
-                # Maskowanie nielegalnych ruchów (-inf)
+                # Maskowanie nielegalnych ruchów
                 mask = torch.full_like(logits, -float('inf'))
                 mask[0, legal_ids] = 0
                 masked_logits = logits + mask
@@ -90,14 +92,11 @@ class Worker(mp.Process):
                 r = 0
                 done = game_is_over(game_status)
                 
-                # 4. Obliczenie nagrody (Reward Shaping)
                 if done:
                     winner = game_winner(game_status)
-                    # 0=Unknown, 1=White, -1=Black, 2=Draw (zależnie od implementacji)
-                    # Jeśli winner != 2 (remis) i winner != 0 (unknown)
                     if winner != 0 and winner != 2: 
-                        # Ponieważ do_move zmienia gracza na końcu, 
-                        # jeśli wygrał ten co NIE jest current_player, to znaczy że wygraliśmy ruchem.
+                        # Jeśli wygrał przeciwnik gracza, który ma TERAZ ruch,
+                        # to znaczy, że my (poprzedni gracz) wygraliśmy.
                         if winner != self.env.current_player:
                             r = 1.0
                         else:
@@ -110,7 +109,7 @@ class Worker(mp.Process):
                 buffer_a.append(action_idx)
                 buffer_r.append(r)
 
-                # 5. Aktualizacja (Update)
+                # 4. Aktualizacja (Update)
                 if total_step % UPDATE_GLOBAL_ITER == 0 or done:
                     if done:
                         v_s_next = 0
@@ -123,13 +122,17 @@ class Worker(mp.Process):
 
                     v_target = v_s_next
                     buffer_v_target = []
-                    # Obliczanie discounted reward w tył
+                    
+                    # --- KLUCZOWA POPRAWKA DLA GIER TUROWYCH ---
+                    # Idziemy w tył. Ponieważ gracze się zmieniają co ruch,
+                    # wartość stanu dla gracza A to (Nagroda - GAMMA * Wartość_dla_B).
+                    # Ten minus (-) jest kluczowy w grach zero-sum!
                     for r_step in buffer_r[::-1]:
-                        v_target = r_step + GAMMA * v_target
+                        v_target = r_step - GAMMA * v_target
                         buffer_v_target.append(v_target)
                     buffer_v_target.reverse()
 
-                    # Przygotowanie batcha
+                    # Batchowanie
                     bs_board = torch.cat([x[0] for x in buffer_s])
                     bs_state = torch.cat([x[1] for x in buffer_s])
                     ba = torch.tensor(buffer_a).view(-1, 1)
@@ -137,25 +140,29 @@ class Worker(mp.Process):
 
                     # Forward pass
                     logits, values = self.l_net(bs_board, bs_state)
+                    
+                    # FIX: dim=1 usuwa Warning z logów
                     log_probs = F.log_softmax(logits, dim=1)
                     log_prob_a = log_probs.gather(1, ba)
                     advantage = bvt - values.detach()
                     
-                    # Loss functions
                     policy_loss = -(log_prob_a * advantage).mean()
                     value_loss = F.mse_loss(values, bvt)
                     
-                    # Entropy (Eksploracja)
+                    # Entropy (Exploration Rate Loss)
                     probs_all = F.softmax(logits, dim=1)
                     entropy = -(probs_all * log_probs).sum(1).mean()
                     
                     total_loss = policy_loss + value_loss - ENTROPY_BETA * entropy
 
-                    # Backpropagation
+                    # Backprop
                     self.opt.zero_grad()
                     total_loss.backward()
                     
-                    # Przesłanie gradientów do sieci globalnej
+                    # --- FIX: GRADIENT CLIPPING ---
+                    # To zapobiega eksplozji Loss do wartości -200000
+                    torch.nn.utils.clip_grad_norm_(self.l_net.parameters(), 0.5)
+                    
                     for lp, gp in zip(self.l_net.parameters(), self.g_net.parameters()):
                         gp._grad = lp.grad
                     self.opt.step()
@@ -165,17 +172,19 @@ class Worker(mp.Process):
                     if done:
                         with self.g_ep.get_lock():
                             self.g_ep.value += 1
+                            curr_ep = self.g_ep.value
+                        
                         with self.g_ep_r.get_lock():
                             if self.g_ep_r.value == 0:
                                 self.g_ep_r.value = ep_r
                             else:
-                                # Średnia krocząca nagrody (Moving Average)
                                 self.g_ep_r.value = self.g_ep_r.value * 0.99 + ep_r * 0.01
                         
-                        # Wysłanie statystyk do procesu głównego (do logowania)
-                        self.res_queue.put((self.g_ep.value, ep_r, total_loss.item(), entropy.item()))
+                        # Logowanie z Entropią
+                        self.res_queue.put((curr_ep, ep_r, total_loss.item(), entropy.item()))
                         
-                        print(f"{self.name} | Ep: {self.g_ep.value} | Reward: {ep_r:.2f} | Loss: {total_loss.item():.4f} | Ent: {entropy.item():.4f}")
+                        if curr_ep % PRINT_INTERVAL == 0:
+                            print(f"{self.name} | Ep: {curr_ep} | Reward: {ep_r:.0f} | AvgR: {self.g_ep_r.value:.2f} | Loss: {total_loss.item():.2f} | Ent(Explor): {entropy.item():.2f}")
                         break
                 
                 total_step += 1
@@ -200,7 +209,6 @@ def load_checkpoint(filepath, model, optimizer):
         return 0
 
 if __name__ == "__main__":
-    # Wymagane dla poprawnego działania multiprocessing na Linux/MacOS (Colab)
     mp.set_start_method('spawn', force=True)
 
     if not os.path.exists(SAVE_DIR):
@@ -209,40 +217,33 @@ if __name__ == "__main__":
     checkpoint_path = os.path.join(SAVE_DIR, CHECKPOINT_FILE)
     log_path = os.path.join(SAVE_DIR, LOG_FILE)
     
-    # Inicjalizacja pliku logów CSV
     if not os.path.exists(log_path):
         with open(log_path, mode='w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["Episode", "Reward", "Loss", "Entropy", "Timestamp"])
 
-    # Pobranie argumentów środowiska i inicjalizacja sieci globalnej
     env_args = get_env_args()
     nsize, _, n_states, n_actions = env_args
     
     global_net = PolicyValueNet(nsize, n_states, n_actions)
-    global_net.share_memory() # Kluczowe: pamięć współdzielona
+    global_net.share_memory() 
     optimizer = SharedAdam(global_net.parameters(), lr=LR)
 
-    # Wczytanie stanu (Resume)
     start_episode = load_checkpoint(checkpoint_path, global_net, optimizer)
     
-    # Zmienne współdzielone między procesami
     global_ep = mp.Value('i', start_episode)
     global_ep_r = mp.Value('d', 0.)
     res_queue = mp.Queue()
 
-    # Uruchomienie workerów
     workers = [Worker(global_net, optimizer, global_ep, global_ep_r, res_queue, i, env_args) 
                for i in range(NUM_WORKERS)]
     
     [w.start() for w in workers]
 
-    # Pętla główna procesu "Master" (Nadzorcy)
     try:
         last_save_time = time.time()
         while True:
-            # 1. Zbieranie logów z kolejki i zapis do CSV
-            # Pobieramy wszystko co się nazbierało, żeby nie blokować bufora
+            # Zbieranie logów
             while not res_queue.empty():
                 try:
                     data = res_queue.get_nowait()
@@ -262,7 +263,6 @@ if __name__ == "__main__":
                 print("All workers finished.")
                 break
             
-            # Krótki sleep, aby proces główny nie zużywał 100% jednego rdzenia
             time.sleep(1) 
 
     except KeyboardInterrupt:
