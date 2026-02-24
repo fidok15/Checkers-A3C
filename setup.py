@@ -32,11 +32,11 @@ setup(
     long_description_content_type="text/markdown",
     packages=find_packages(),
     install_requires=[
-                    'numpy<1.20.0,>=1.17.0', # numpy for py36
-                    'pygame>=2.1.0',
-                    'requests>=2.24.0',
-                    'torch<=1.10.0,>=1.6.0',
-                    'tensorboardX>=2.4',
+                    'numpy>=1.26.0',
+                    'pygame>=2.5.0',
+                    'requests>=2.31.0',
+                    'torch>=2.1.0',
+                    'tensorboardX>=2.6',
                     ],
     license="GPLv2",
     classifiers=[

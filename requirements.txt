@@ -1,5 +1,6 @@
-requests==2.24.0
-numpy==1.17.0
-pygame==2.1.0
-tensorboardX==2.4
-torch==1.6.0
+requests>=2.31.0
+numpy>=1.26.0
+pygame>=2.5.0
+tensorboardX>=2.6
+tensorboard>=2.14.0
+torch>=2.1.0
