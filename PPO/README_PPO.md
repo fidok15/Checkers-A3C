@@ -1,7 +1,17 @@
 potem to dokładniej tu opiszę,
 
-Odpalanie: Puszczamy plik train.py z tego folderu, jak juz mamy jakis gotowy model z poprzedniego przerwanego treningu to bierzemy ostatni model z folderu checkpoints i wrzucamy do terminala 
+Tipy:
+domyślnie komendy działają kiedy działamy w folderze PPO (cd PPO) ale pewnie gdzieś o tym pozapominałem wiec trzeba uważać na ścieżki
+
+Trenowanie: Puszczamy plik train.py z tego folderu, jak juz mamy jakis gotowy model z poprzedniego przerwanego treningu to bierzemy ostatni model z folderu checkpoints i wrzucamy do terminala np:
 python train.py --resume checkpoints/ppo_checkers_200.pt --total-steps 5000000
+najważniejsze parametry do treningu:
+-- lr : learning rate
+-- total-steps : ile maksymalnie ruchów może być w jednej grze
+-- rollout-steps : co ile ruchów model aktualizuje wagi
+-- resume : wznawia trenowanie zapisanego modelu (po resume dajemy path do modelu)
+-- mcts-ratio : jaki procent przeciwników to mcts (domyślnie 30%)
+-- mcts-playout : jaka głębokość mcts (domyślnie 100)
 
 Gra na mcts:
 cd PPO

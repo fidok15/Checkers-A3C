@@ -21,6 +21,7 @@ from deepdraughts.env.py_env.env_utils import (
     game_is_over, game_winner,
     state2vec, action2id, N_ACTION_64,
 )
+from deepdraughts.env.py_env.piece import Piece
 
 from config import PPOConfig
 
@@ -69,18 +70,37 @@ class CheckersEnv:
             )
 
         player_before = self.game.current_player
+        opponent = BLACK if player_before == WHITE else WHITE
+
+        # Count opponent pieces BEFORE the move (to detect captures)
+        opp_pieces_before = sum(
+            1 for p in self.game.current_board.pieces.values()
+            if p.player == opponent
+        )
+
         game_status = self.game.do_move(move)
         self.step_count += 1
 
+        # Count opponent pieces AFTER the move
+        opp_pieces_after = sum(
+            1 for p in self.game.current_board.pieces.values()
+            if p.player == opponent
+        )
+        captured = opp_pieces_before - opp_pieces_after
+
         done = game_is_over(game_status) or self.step_count >= self.config.max_game_steps
         reward = self._compute_reward(game_status, player_before, done)
+
+        # Reward shaping: bonus for capturing opponent pieces
+        if captured > 0 and not game_is_over(game_status):
+            reward += captured * self.config.reward_capture
 
         if not done:
             self._refresh_legal_map()
             # If the current player has no legal moves the game is effectively over
             if len(self._legal_map) == 0:
                 done = True
-                reward = self.config.reward_loss  # current player lost
+                reward = self.config.reward_win  # mover wins — opponent has no legal moves
 
         obs = self._get_obs()
         mask = self.get_action_mask()

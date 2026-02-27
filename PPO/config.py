@@ -23,23 +23,27 @@ class PPOConfig:
     gamma: float = 0.99          # discount factor
     gae_lambda: float = 0.95     # balance between Monte Carlo (1) and TD (0)
     clip_eps: float = 0.2        # how much can policy deviate from old one in update
-    entropy_coef: float = 0.01   # entropy bonus coefficient
+    entropy_coef: float = 0.03   # entropy bonus coefficient (higher → more exploration)
     value_coef: float = 0.5      # value loss coefficient
     max_grad_norm: float = 0.5   # gradient clipping
 
     # --- Training ---
     n_epochs: int = 4            # PPO epochs per update
-    batch_size: int = 64         # mini-batch size
-    rollout_steps: int = 512     # steps per rollout before update
+    batch_size: int = 128        # mini-batch size (bigger → more stable gradients)
+    rollout_steps: int = 2048    # steps per rollout before update (more games per update)
     n_envs: int = 1              # number of parallel self-play environments
     total_timesteps: int = 2_000_000  # total training timesteps
-    update_opponent_every: int = 50   # update opponent model every N updates
+    opponent_pool_size: int = 20     # max past model snapshots to keep
+    opponent_pool_interval: int = 10 # add current model to pool every N updates
+    mcts_opponent_ratio: float = 0.3 # fraction of games vs MCTS (0.0 = pure self-play, 1.0 = pure MCTS)
+    mcts_opponent_playouts: int = 100 # MCTS playouts per move during training
 
     # --- Rewards ---
     reward_win: float = 1.0
     reward_loss: float = -1.0
     reward_draw: float = 0.0
     reward_step: float = -0.001  # small penalty per step to encourage faster play
+    reward_capture: float = 0.05 # reward for each captured opponent piece
     max_game_steps: int = 300    # max steps before forced draw
 
     # --- Logging & checkpoints ---

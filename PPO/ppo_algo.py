@@ -58,13 +58,12 @@ class RolloutBuffer:
 
     def compute_gae(self, last_value: float, last_done: bool):
         """
-        Compute Generalized Advantage Estimation.
+        Standard single-player GAE.
 
-        Because this is a two-player game where we alternate perspectives,
-        rewards are already from the correct player's viewpoint (the one
-        who made the move at that step).  However, the *next* value
-        estimate belongs to the *opponent*.  We negate it because the
-        opponent's value is our negative value.
+        With the opponent pool, all buffer entries are from the LEARNER's
+        perspective.  Consecutive non-terminal entries are consecutive
+        learner turns (the opponent moved in between as part of the
+        environment dynamics).  No negation is needed.
         """
         gamma = self.cfg.gamma
         lam = self.cfg.gae_lambda
@@ -72,22 +71,19 @@ class RolloutBuffer:
 
         last_gae = 0.0
         for t in reversed(range(n)):
-            if t == n - 1:
-                next_non_terminal = 1.0 - float(last_done)
-                # The next value is from the opponent's perspective → negate
-                next_value = -last_value
-            else:
-                next_non_terminal = 1.0 - self.dones[t + 1]
-                # The stored value at t+1 is from the other player's view
-                next_value = -self.values[t + 1]
-
-            # If the game ended at step t, there is no next state
             if self.dones[t]:
-                next_non_terminal = 0.0
-                next_value = 0.0
+                # Terminal step – no next state to bootstrap from.
+                delta = self.rewards[t] - self.values[t]
+                last_gae = delta
+            else:
+                if t == n - 1:
+                    next_value = 0.0 if last_done else last_value
+                else:
+                    next_value = self.values[t + 1]
 
-            delta = self.rewards[t] + gamma * next_value * next_non_terminal - self.values[t]
-            last_gae = delta + gamma * lam * next_non_terminal * last_gae
+                delta = self.rewards[t] + gamma * next_value - self.values[t]
+                last_gae = delta + gamma * lam * last_gae
+
             self.advantages[t] = last_gae
 
         self.returns[:n] = self.advantages[:n] + self.values[:n]
