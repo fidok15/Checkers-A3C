@@ -41,15 +41,17 @@ ENTROPY_BETA = 0.05
 LR = 0.0001                  
 
 class Worker(mp.Process):
-    def __init__(self, global_net, optimizer, global_ep, global_ep_r, res_queue, name, env_args):
+    def __init__(self, global_net, optimizer, update_lock, global_ep, global_ep_r, res_queue, name, env_args):
         super(Worker, self).__init__()
         self.name = 'w%02i' % name
         self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
         self.g_net = global_net
         self.opt = optimizer
+        self.update_lock = update_lock  # POPRAWKA: przechowujemy lock
         
-        # Inicjalizacja gry bez argumentów (domyślne Russian/64)
-        self.env = Game() 
+        # Inicjalizacja gry - jeśli env_args to krotka (nsize, ...), przekaż do Game
+        # Zakładam, że Game przyjmuje odpowiednie argumenty; jeśli nie, zostaw puste
+        self.env = Game()  # ewentualnie Game(*env_args) jeśli wymaga
         
         nsize, _, n_states, n_actions = env_args
         self.env_net_params = (nsize, n_states, n_actions)
@@ -60,8 +62,9 @@ class Worker(mp.Process):
         total_step = 1
         
         while self.g_ep.value < MAX_EPISODES:
+            # ładujemy globalne wagi na początku epizodu
             self.l_net.load_state_dict(self.g_net.state_dict())
-            self.env = Game() # Reset gry
+            self.env = Game()  # Reset gry (lub Game(*env_args))
             
             buffer_s, buffer_a, buffer_r = [], [], []
             ep_r = 0
@@ -94,15 +97,14 @@ class Worker(mp.Process):
                 
                 if done:
                     winner = game_winner(game_status)
-                    if winner != 0 and winner != 2: 
-                        # Jeśli wygrał przeciwnik gracza, który ma TERAZ ruch,
-                        # to znaczy, że my (poprzedni gracz) wygraliśmy.
+                    if winner == 1 or winner == 2:  # ktoś wygrał
+
                         if winner != self.env.current_player:
                             r = 1.0
                         else:
                             r = -1.0
-                    elif game_status == 2: # Remis
-                         r = 0.0
+                    else:
+                        r = 0.0
 
                 ep_r += r
                 buffer_s.append((s_board, s_state))
@@ -123,10 +125,7 @@ class Worker(mp.Process):
                     v_target = v_s_next
                     buffer_v_target = []
                     
-                    # --- KLUCZOWA POPRAWKA DLA GIER TUROWYCH ---
-                    # Idziemy w tył. Ponieważ gracze się zmieniają co ruch,
-                    # wartość stanu dla gracza A to (Nagroda - GAMMA * Wartość_dla_B).
-                    # Ten minus (-) jest kluczowy w grach zero-sum!
+                    # Obliczanie celu wartości dla gier turowych
                     for r_step in buffer_r[::-1]:
                         v_target = r_step - GAMMA * v_target
                         buffer_v_target.append(v_target)
@@ -138,10 +137,9 @@ class Worker(mp.Process):
                     ba = torch.tensor(buffer_a).view(-1, 1)
                     bvt = torch.tensor(buffer_v_target, dtype=torch.float).view(-1, 1)
 
-                    # Forward pass
+                    # Forward pass lokalnej sieci
                     logits, values = self.l_net(bs_board, bs_state)
                     
-                    # FIX: dim=1 usuwa Warning z logów
                     log_probs = F.log_softmax(logits, dim=1)
                     log_prob_a = log_probs.gather(1, ba)
                     advantage = bvt - values.detach()
@@ -149,24 +147,27 @@ class Worker(mp.Process):
                     policy_loss = -(log_prob_a * advantage).mean()
                     value_loss = F.mse_loss(values, bvt)
                     
-                    # Entropy (Exploration Rate Loss)
                     probs_all = F.softmax(logits, dim=1)
                     entropy = -(probs_all * log_probs).sum(1).mean()
                     
                     total_loss = policy_loss + value_loss - ENTROPY_BETA * entropy
 
-                    # Backprop
-                    self.opt.zero_grad()
+                    # Backward na lokalnej sieci (nie wymaga blokady)
                     total_loss.backward()
                     
-                    # --- FIX: GRADIENT CLIPPING ---
-                    # To zapobiega eksplozji Loss do wartości -200000
+                    # Gradient clipping na lokalnej sieci
                     torch.nn.utils.clip_grad_norm_(self.l_net.parameters(), 0.5)
                     
-                    for lp, gp in zip(self.l_net.parameters(), self.g_net.parameters()):
-                        gp._grad = lp.grad
-                    self.opt.step()
-
+                    with self.update_lock:
+                        # Zerujemy gradienty globalne
+                        self.opt.zero_grad()
+                        # Kopiujemy gradienty z lokalnej sieci do globalnej
+                        for lp, gp in zip(self.l_net.parameters(), self.g_net.parameters()):
+                            gp._grad = lp.grad
+                        # Wykonujemy krok optymalizatora na globalnych wagach
+                        self.opt.step()
+            
+                    # Czyścimy bufory
                     buffer_s, buffer_a, buffer_r = [], [], []
 
                     if done:
@@ -180,7 +181,6 @@ class Worker(mp.Process):
                             else:
                                 self.g_ep_r.value = self.g_ep_r.value * 0.99 + ep_r * 0.01
                         
-                        # Logowanie z Entropią
                         self.res_queue.put((curr_ep, ep_r, total_loss.item(), entropy.item()))
                         
                         if curr_ep % PRINT_INTERVAL == 0:
@@ -209,6 +209,7 @@ def load_checkpoint(filepath, model, optimizer):
         return 0
 
 if __name__ == "__main__":
+    #tworzy nowy czysty proces
     mp.set_start_method('spawn', force=True)
 
     if not os.path.exists(SAVE_DIR):
@@ -221,23 +222,31 @@ if __name__ == "__main__":
         with open(log_path, mode='w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["Episode", "Reward", "Loss", "Entropy", "Timestamp"])
-
+    #wymiar, _ ,19 plaszczyzn gdzie sa pionki, liczba wszystkich ruchow 
     env_args = get_env_args()
     nsize, _, n_states, n_actions = env_args
     
     global_net = PolicyValueNet(nsize, n_states, n_actions)
+
+    #pamiec wspoldzieloan 
     global_net.share_memory() 
     optimizer = SharedAdam(global_net.parameters(), lr=LR)
+    #lock updateow 
+    update_lock = mp.Lock()
 
+    #zaldaowanie chackpointa 
     start_episode = load_checkpoint(checkpoint_path, global_net, optimizer)
     
+    #zmienne globalne epizody, suma nagrod, kolejka procesow 
     global_ep = mp.Value('i', start_episode)
     global_ep_r = mp.Value('d', 0.)
     res_queue = mp.Queue()
 
-    workers = [Worker(global_net, optimizer, global_ep, global_ep_r, res_queue, i, env_args) 
-               for i in range(NUM_WORKERS)]
+    #stworzenie listy pracownikow 
+    workers = [Worker(global_net, optimizer, update_lock, global_ep, global_ep_r, res_queue, i, env_args) 
+           for i in range(NUM_WORKERS)]
     
+    #uruchomienie ich
     [w.start() for w in workers]
 
     try:
@@ -255,7 +264,8 @@ if __name__ == "__main__":
                     break
 
             if time.time() - last_save_time > SAVE_INTERVAL_SEC:
-                save_checkpoint(global_net, optimizer, global_ep.value, checkpoint_path)
+                with update_lock:
+                    save_checkpoint(global_net, optimizer, global_ep.value, checkpoint_path)
                 last_save_time = time.time()
             
             alive_workers = [w.is_alive() for w in workers]
@@ -267,6 +277,9 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         print("Stopping training manually...")
-        save_checkpoint(global_net, optimizer, global_ep.value, checkpoint_path)
+        with update_lock:
+            save_checkpoint(global_net, optimizer, global_ep.value, checkpoint_path)
     
     [w.join() for w in workers]
+
+    
