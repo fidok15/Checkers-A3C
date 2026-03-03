@@ -29,38 +29,21 @@ from deepdraughts.env.py_env.env_utils import (
     state2vec, action2id, N_ACTION_64,
 )
 from deepdraughts.mcts_pure import MCTSPlayer
+from env_wrapper import canonical_observation
 
 
 # ── PPO move selection ─────────────────────────────────────────────
 
 def ppo_select_move(model, game, device):
     """Use trained PPO model to pick a move (greedy argmax)."""
-    vec_board, vec_state = state2vec(game)
+    (vb, vs), mask, legal_map = canonical_observation(game)
 
-    # Canonical perspective (current player always sees as WHITE)
-    if game.current_player == BLACK:
-        vec_board = np.concatenate([vec_board[2:4], vec_board[0:2]], axis=0)
-        vec_board = vec_board[:, ::-1, :].copy()
-        vec_state = vec_state.copy()
-        vec_state[0] = 1
-
-    # Build action mask
-    moves = game.get_all_available_moves()
-    legal_map = {}
-    for m in moves:
-        aid = action2id(m)
-        legal_map[aid] = m
-
-    mask = np.zeros(N_ACTION_64, dtype=np.float32)
-    for aid in legal_map:
-        mask[aid] = 1.0
-
-    vb = torch.tensor(vec_board, device=device, dtype=torch.float32).unsqueeze(0)
-    vs = torch.tensor(vec_state, device=device, dtype=torch.float32).unsqueeze(0)
-    am = torch.tensor(mask, device=device, dtype=torch.float32).unsqueeze(0)
+    vb_t = torch.tensor(vb, device=device, dtype=torch.float32).unsqueeze(0)
+    vs_t = torch.tensor(vs, device=device, dtype=torch.float32).unsqueeze(0)
+    am_t = torch.tensor(mask, device=device, dtype=torch.float32).unsqueeze(0)
 
     with torch.no_grad():
-        logits, _ = model(vb, vs, am)
+        logits, _ = model(vb_t, vs_t, am_t)
 
     action_id = logits.argmax(dim=-1).item()
     return legal_map[action_id]

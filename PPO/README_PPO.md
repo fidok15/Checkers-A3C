@@ -19,11 +19,10 @@ python evaluate.py --checkpoint checkpoints/ppo_checkers_1100.pt
 parametry do usatwiania:
 -- games : liczba gier (jako oba kolory więc 2 razy więcej niż wpiszemy)
 -- checkpoint : wpisujemy model do przetestowania (obecnie wszystkie daje do folderu checkpoint)
--- playouts : jak dużo ścieżek sprawdza mcts
+-- mcts-playouts : jak dużo ścieżek sprawdza mcts
 -- max-steps : limit ruchów na grę
 -- gpu : używamy gpu jeśli mamy
 
 Granie:
 ..\.venv\Scripts\python.exe play.py --checkpoint checkpoints\ppo_checkers_1100.pt
 
-spróbujcie ogarnąć venva i komenda w terminalu jak wyżej, wybieracie checkpoint i sobie z nim gracie w konsoli, pewnie jak powiecie copilotowi to wam ogarnie

@@ -5,11 +5,7 @@ The agent plays against itself: at each step the same network picks
 moves for the current player.  Transitions are collected into a rollout
 buffer and then PPO updates the policy.
 
-Usage:
-    cd PPO
-    python train.py
 """
-
 import sys
 import os
 import time
@@ -28,7 +24,7 @@ from config import PPOConfig
 from model import ActorCritic
 from env_wrapper import SelfPlayEnv
 from ppo_algo import PPO
-from utils import GameStats, Timer, ensure_dir, set_seed
+from utils import Timer, ensure_dir, set_seed
 
 from deepdraughts.env.py_env.env_utils import (
     WHITE, BLACK,
@@ -83,15 +79,30 @@ def _mcts_opponent_move(env: SelfPlayEnv, mcts_player: MCTSPlayer):
     """Have the MCTS opponent make one move. Returns (done, info)."""
     move, _ = mcts_player.get_action(env.env.game)
     from deepdraughts.env.py_env.env_utils import action2id
+    from env_wrapper import _FLIPPED_ACTION
     action = action2id(move)
+    # The wrapper exposes flipped action IDs when Black is playing;
+    # MCTS returns the original move, so we must flip the ID to match.
+    if env.env._is_flipped:
+        action = _FLIPPED_ACTION.get(action, action)
     _, _, done, info = env.step(action)
     return done, info
 
 
-def _record_result(winner, learner_color, stats, info, counters):
+def _record_result(winner, learner_color, info, counters):
     """Helper: update stats and learner win/loss/draw counters."""
-    stats.record(winner, info["step_count"])
     counters["games"] += 1
+    counters["total_steps"] += info["step_count"]
+    
+    # Track by color
+    if winner == 1:  # WHITE
+        counters["white_wins"] += 1
+    elif winner == -1:  # BLACK
+        counters["black_wins"] += 1
+    else:
+        counters["draws"] += 1
+    
+    # Track learner performance
     if winner == learner_color:
         counters["learner_wins"] += 1
     elif winner != 0:
@@ -101,7 +112,7 @@ def _record_result(winner, learner_color, stats, info, counters):
 
 
 def collect_rollout(ppo: PPO, env: SelfPlayEnv, config: PPOConfig,
-                    stats: GameStats, opponent_model, opponent_pool: OpponentPool,
+                    opponent_model, opponent_pool: OpponentPool,
                     mcts_player: MCTSPlayer | None = None):
     """
     Collect a rollout with an opponent sampled from the pool or MCTS.
@@ -114,8 +125,11 @@ def collect_rollout(ppo: PPO, env: SelfPlayEnv, config: PPOConfig,
     ppo.model.eval()
 
     stored = 0
-    counters = {"games": 0, "learner_wins": 0, "learner_losses": 0,
-                "learner_draws": 0, "mcts_games": 0, "pool_games": 0}
+    counters = {
+        "games": 0, "learner_wins": 0, "learner_losses": 0, "learner_draws": 0,
+        "mcts_games": 0, "pool_games": 0,
+        "white_wins": 0, "black_wins": 0, "draws": 0, "total_steps": 0,
+    }
     game_active = False
     use_mcts = False
 
@@ -151,7 +165,7 @@ def collect_rollout(ppo: PPO, env: SelfPlayEnv, config: PPOConfig,
                 if done:
                     gs = info["game_status"]
                     w = game_winner(gs) if game_is_over(gs) else 0
-                    _record_result(w, learner_color, stats, info, counters)
+                    _record_result(w, learner_color, info, counters)
                     opp_ended = True
                     break
             if opp_ended:
@@ -172,7 +186,7 @@ def collect_rollout(ppo: PPO, env: SelfPlayEnv, config: PPOConfig,
             stored += 1
             gs = info_l["game_status"]
             w = game_winner(gs) if game_is_over(gs) else 0
-            _record_result(w, learner_color, stats, info_l, counters)
+            _record_result(w, learner_color, info_l, counters)
             game_active = False
             continue
 
@@ -204,7 +218,7 @@ def collect_rollout(ppo: PPO, env: SelfPlayEnv, config: PPOConfig,
                 buffer.add(vb, vs, mask, action, log_prob,
                            reward_l + terminal_r, value, True)
                 stored += 1
-                _record_result(w, learner_color, stats, info_o, counters)
+                _record_result(w, learner_color, info_o, counters)
                 game_active = False
                 opp_ended_game = True
                 break
@@ -227,49 +241,29 @@ def collect_rollout(ppo: PPO, env: SelfPlayEnv, config: PPOConfig,
     return counters
 
 
-def evaluate(ppo: PPO, config: PPOConfig, n_games: int = 20) -> dict:
+def evaluate_vs_mcts(model, device, config, n_games=10, mcts_playouts=100):
     """
-    Play n_games using greedy action selection (argmax) and report stats.
+    Play n_games against Pure MCTS and return PPO win rate.
+    Half the games are played as WHITE, half as BLACK.
     """
-    env = SelfPlayEnv(config)
-    wins_w, wins_b, draws = 0, 0, 0
-    total_steps = 0
+    from evaluate import play_one_game
+    mcts_player = MCTSPlayer(c_puct=5, n_playout=mcts_playouts)
+    ppo_wins = 0
+    half = n_games // 2
 
-    for _ in range(n_games):
-        obs, mask = env.reset()
-        done = False
-        steps = 0
+    for _ in range(half):
+        mcts_player.reset()
+        winner, _ = play_one_game(model, device, mcts_player, WHITE, config.max_game_steps)
+        if winner == WHITE:
+            ppo_wins += 1
 
-        while not done and steps < config.max_game_steps:
-            vb, vs = obs
-            vb_t = torch.tensor(vb, device=ppo.device).unsqueeze(0)
-            vs_t = torch.tensor(vs, device=ppo.device).unsqueeze(0)
-            am_t = torch.tensor(mask, device=ppo.device).unsqueeze(0)
+    for _ in range(n_games - half):
+        mcts_player.reset()
+        winner, _ = play_one_game(model, device, mcts_player, BLACK, config.max_game_steps)
+        if winner == BLACK:
+            ppo_wins += 1
 
-            with torch.no_grad():
-                logits, _ = ppo.model(vb_t, vs_t, am_t)
-
-            action = logits.argmax(dim=-1).item()
-            obs, reward, done, info = env.step(action)
-            mask = env.env.get_action_mask() if not done else np.zeros(config.n_actions, dtype=np.float32)
-            steps += 1
-
-        gs = info.get("game_status", GAME_DRAW)
-        w = game_winner(gs) if game_is_over(gs) else 0
-        if w == 1:
-            wins_w += 1
-        elif w == -1:
-            wins_b += 1
-        else:
-            draws += 1
-        total_steps += steps
-
-    return {
-        "eval_white_win": wins_w / n_games,
-        "eval_black_win": wins_b / n_games,
-        "eval_draw": draws / n_games,
-        "eval_avg_length": total_steps / n_games,
-    }
+    return ppo_wins / max(n_games, 1)
 
 
 def train(config: PPOConfig, resume_path: str | None = None):
@@ -283,7 +277,6 @@ def train(config: PPOConfig, resume_path: str | None = None):
 
     ppo = PPO(config)
     env = SelfPlayEnv(config)
-    stats = GameStats(window=100)
 
     # Opponent pool for diverse training
     opponent_model = ActorCritic(config).to(ppo.device)
@@ -320,13 +313,20 @@ def train(config: PPOConfig, resume_path: str | None = None):
 
     for update in range(start_update + 1, n_updates + 1):
         # --- Collect rollout ---
-        rollout_info = collect_rollout(ppo, env, config, stats,
+        rollout_info = collect_rollout(ppo, env, config,
                                        opponent_model, opponent_pool,
                                        mcts_player)
         total_steps += config.rollout_steps
 
+        # --- Learning rate & entropy coefficient schedule (linear decay) ---
+        progress = update / n_updates
+        current_lr = config.lr * (1.0 - progress)
+        for param_group in ppo.optimizer.param_groups:
+            param_group['lr'] = current_lr
+        current_entropy_coef = config.entropy_coef + (config.entropy_coef_end - config.entropy_coef) * progress
+
         # --- PPO update ---
-        losses = ppo.update()
+        losses = ppo.update(entropy_coef=current_entropy_coef)
         update_num += 1
 
         # --- Add model to opponent pool ---
@@ -338,16 +338,20 @@ def train(config: PPOConfig, resume_path: str | None = None):
         writer.add_scalar("loss/value", losses["value_loss"], total_steps)
         writer.add_scalar("loss/entropy", losses["entropy"], total_steps)
         writer.add_scalar("loss/total", losses["total_loss"], total_steps)
-
-        if stats.n_games > 0:
-            writer.add_scalar("game/white_win_rate", stats.white_win_rate, total_steps)
-            writer.add_scalar("game/black_win_rate", stats.black_win_rate, total_steps)
-            writer.add_scalar("game/draw_rate", stats.draw_rate, total_steps)
-            writer.add_scalar("game/avg_length", stats.avg_length, total_steps)
+        writer.add_scalar("schedule/lr", current_lr, total_steps)
+        writer.add_scalar("schedule/entropy_coef", current_entropy_coef, total_steps)
 
         ri = rollout_info
         if ri["games"] > 0:
+            white_wr = ri["white_wins"] / ri["games"]
+            black_wr = ri["black_wins"] / ri["games"]
+            draw_r = ri["draws"] / ri["games"]
+            avg_len = ri["total_steps"] / ri["games"]
             lwr = ri["learner_wins"] / ri["games"]
+            writer.add_scalar("game/white_win_rate", white_wr, total_steps)
+            writer.add_scalar("game/black_win_rate", black_wr, total_steps)
+            writer.add_scalar("game/draw_rate", draw_r, total_steps)
+            writer.add_scalar("game/avg_length", avg_len, total_steps)
             writer.add_scalar("game/learner_winrate", lwr, total_steps)
         writer.add_scalar("pool/size", len(opponent_pool), total_steps)
         if ri["mcts_games"] + ri["pool_games"] > 0:
@@ -357,39 +361,46 @@ def train(config: PPOConfig, resume_path: str | None = None):
         if update % config.log_interval == 0:
             elapsed = timer.elapsed_str()
             sps = total_steps / timer.elapsed()
-            lwr = ri["learner_wins"] / max(ri["games"], 1)
+            n_games = max(ri["games"], 1)
+            lwr = ri["learner_wins"] / n_games
+            white_wr = ri["white_wins"] / n_games
+            black_wr = ri["black_wins"] / n_games
+            draw_r = ri["draws"] / n_games
+            avg_len = ri["total_steps"] / n_games
             opp_str = f"Pool:{ri['pool_games']} MCTS:{ri['mcts_games']}"
+            game_str = f"Games: {ri['games']} | W: {white_wr:.0%} | B: {black_wr:.0%} | D: {draw_r:.0%} | Len: {avg_len:.0f}"
             print(
                 f"Update {update}/{n_updates} | "
                 f"Steps: {total_steps:,} | "
                 f"SPS: {sps:.0f} | "
                 f"LWR: {lwr:.0%} | "
                 f"{opp_str} | "
-                f"{stats.summary()} | "
+                f"{game_str} | "
                 f"PL: {losses['policy_loss']:.4f} | "
                 f"VL: {losses['value_loss']:.4f} | "
                 f"Ent: {losses['entropy']:.4f} | "
                 f"Time: {elapsed}"
             )
 
-        # --- Checkpoint ---
+        # --- Save last checkpoint (always overwritten) ---
+        last_path = os.path.join(config.checkpoint_dir, "last_checkpoint.pt")
+        ppo.save(last_path, total_steps=total_steps)
+
+        # --- Numbered checkpoint ---
         if update % config.save_interval == 0:
             path = os.path.join(config.checkpoint_dir, f"ppo_checkers_{update}.pt")
             ppo.save(path, total_steps=total_steps)
             print(f"  -> Saved checkpoint: {path}")
 
-        # --- Periodic evaluation ---
-        if update % (config.save_interval) == 0:
+        # --- Periodic MCTS evaluation ---
+        if update % config.save_interval == 0:
             ppo.model.eval()
-            eval_stats = evaluate(ppo, config, n_games=20)
-            for k, v in eval_stats.items():
-                writer.add_scalar(f"eval/{k}", v, total_steps)
-            print(
-                f"  -> Eval: W={eval_stats['eval_white_win']:.0%} "
-                f"B={eval_stats['eval_black_win']:.0%} "
-                f"D={eval_stats['eval_draw']:.0%} "
-                f"Len={eval_stats['eval_avg_length']:.0f}"
-            )
+            print(f"  -> Evaluating vs MCTS...")
+            for playouts in [10, 100, 1000]:
+                wr = evaluate_vs_mcts(ppo.model, ppo.device, config,
+                                      n_games=10, mcts_playouts=playouts)
+                writer.add_scalar(f"eval/vs_mcts_{playouts}", wr, total_steps)
+                print(f"     MCTS-{playouts}: {wr:.0%} win rate (10 games)")
 
     # Final save
     final_path = os.path.join(config.checkpoint_dir, "ppo_checkers_final.pt")

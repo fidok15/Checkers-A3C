@@ -159,9 +159,10 @@ class PPO:
         am = torch.tensor(action_mask, device=self.device).unsqueeze(0)
         return self.model.get_value(vb, vs, am).item()
 
-    def update(self):
+    def update(self, entropy_coef=None):
         """Run PPO update on the filled buffer. Returns dict of losses."""
         cfg = self.cfg
+        current_entropy_coef = entropy_coef if entropy_coef is not None else cfg.entropy_coef
         self.model.train()
 
         total_pg_loss = 0.0
@@ -201,7 +202,7 @@ class PPO:
                 entropy_loss = -entropy.mean()
 
                 # Total loss
-                loss = pg_loss + cfg.value_coef * v_loss + cfg.entropy_coef * entropy_loss
+                loss = pg_loss + cfg.value_coef * v_loss + current_entropy_coef * entropy_loss
 
                 self.optimizer.zero_grad()
                 loss.backward()

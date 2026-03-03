@@ -19,11 +19,74 @@ from deepdraughts.env.py_env.env_utils import (
     WHITE, BLACK, RUSSIAN_RULE,
     GAME_CONTINUE, GAME_WHITE_WIN, GAME_BLACK_WIN, GAME_DRAW,
     game_is_over, game_winner,
-    state2vec, action2id, N_ACTION_64,
+    state2vec, action2id, N_ACTION_64, MOVE_MAP_64,
 )
 from deepdraughts.env.py_env.piece import Piece
 
 from config import PPOConfig
+
+
+# ── Action flipping for Black perspective ──────────────────────────
+def _flip_pos(pos: int) -> int:
+    """Flip position 180° on the 8x8 board (maps valid dark squares to valid dark squares)."""
+    return 63 - pos
+
+
+# Build reverse map: action_id -> (from_pos, to_pos)
+_ID_TO_MOVE = {aid: move for move, aid in MOVE_MAP_64.items()}
+
+# Build flipped action mapping: original_aid -> flipped_aid
+_FLIPPED_ACTION = {}
+for orig_aid, (from_pos, to_pos) in _ID_TO_MOVE.items():
+    flipped_from = _flip_pos(from_pos)
+    flipped_to = _flip_pos(to_pos)
+    flipped_move = (flipped_from, flipped_to)
+    if flipped_move in MOVE_MAP_64:
+        _FLIPPED_ACTION[orig_aid] = MOVE_MAP_64[flipped_move]
+    else:
+        # Fallback: keep original (shouldn't happen for valid moves)
+        _FLIPPED_ACTION[orig_aid] = orig_aid
+
+# Reverse: flipped_aid -> original_aid
+_UNFLIP_ACTION = {v: k for k, v in _FLIPPED_ACTION.items()}
+
+
+def canonical_observation(game):
+    """
+    Get canonical observation and action mapping for the current player.
+    Handles board 180° rotation, channel swapping, and action flipping for Black.
+    Used by evaluate.py and play.py for consistent perspective handling.
+
+    Returns:
+        (vec_board, vec_state): canonical float32 observation tensors
+        mask: action mask ndarray of shape (280,)
+        legal_map: dict mapping canonical action_id -> Move object
+    """
+    vec_board, vec_state = state2vec(game)
+    is_black = (game.current_player == BLACK)
+
+    if is_black:
+        vec_board = vec_board.copy()
+        vec_board = np.concatenate([vec_board[2:4], vec_board[0:2]], axis=0)
+        vec_board = vec_board[:, ::-1, ::-1].copy()
+        vec_state = vec_state.copy()
+        vec_state[0] = 1
+        n_chain = len(game.chain_taking_moves)
+        for i in range(n_chain):
+            vec_state[i + 2] = 62 - vec_state[i + 2]
+
+    moves = game.get_all_available_moves()
+    legal_map = {}
+    for m in moves:
+        orig_aid = action2id(m)
+        exposed_aid = _FLIPPED_ACTION.get(orig_aid, orig_aid) if is_black else orig_aid
+        legal_map[exposed_aid] = m
+
+    mask = np.zeros(N_ACTION_64, dtype=np.float32)
+    for aid in legal_map:
+        mask[aid] = 1.0
+
+    return (vec_board.astype(np.float32), vec_state.astype(np.float32)), mask, legal_map
 
 
 class CheckersEnv:
@@ -36,7 +99,7 @@ class CheckersEnv:
     W każdym ruchu dostępna jest tylko część możliwych ruchów;  `get_action_mask()`.
 
     Agent zawsze widzi plansze jakby grał białymi, jeśli gra czarnymi,
-    to wrapper odwraca planszę i cechy tak, żeby się zgadzały jakby grał białymi.
+    to wrapper odwraca planszę, cechy i AKCJE tak, żeby się zgadzały jakby grał białymi.
     """
 
     def __init__(self, config: PPOConfig | None = None):
@@ -46,7 +109,9 @@ class CheckersEnv:
         self.step_count = 0
 
         # Mapping from action_id -> Move for current legal moves
+        # When Black is playing, this maps FLIPPED action_ids to original Moves
         self._legal_map: dict[int, object] = {}
+        self._is_flipped: bool = False  # True when current player is Black
 
 
     def reset(self):
@@ -125,12 +190,19 @@ class CheckersEnv:
 
     
     def _refresh_legal_map(self):
-        """Rebuild the mapping action_id -> Move for current legal moves."""
+        """
+        Rebuild the mapping action_id -> Move for current legal moves.
+        When Black is playing, we map FLIPPED action_ids to original Moves,
+        so the agent sees consistent action space with the flipped board.
+        """
         self._legal_map = {}
+        self._is_flipped = (self.game.current_player == BLACK)
         moves = self.game.get_all_available_moves()
         for m in moves:
-            aid = action2id(m)
-            self._legal_map[aid] = m
+            orig_aid = action2id(m)
+            # If Black is playing, use flipped action ID so it matches flipped board
+            exposed_aid = _FLIPPED_ACTION.get(orig_aid, orig_aid) if self._is_flipped else orig_aid
+            self._legal_map[exposed_aid] = m
 
     def _get_obs(self):
         """
@@ -145,10 +217,14 @@ class CheckersEnv:
             vec_board = vec_board.copy()
             # swap white <-> black channels
             vec_board = np.concatenate([vec_board[2:4], vec_board[0:2]], axis=0)
-            # flip board vertically so direction of play is consistent
-            vec_board = vec_board[:, ::-1, :].copy()
+            # 180° rotation so direction of play is consistent
+            vec_board = vec_board[:, ::-1, ::-1].copy()
             vec_state = vec_state.copy()
             vec_state[0] = 1  # always "my turn"
+            # Flip chain-taking positions (stored as taken_pos - 1)
+            n_chain = len(self.game.chain_taking_moves)
+            for i in range(n_chain):
+                vec_state[i + 2] = 62 - vec_state[i + 2]
 
         return vec_board.astype(np.float32), vec_state.astype(np.float32)
 

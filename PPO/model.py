@@ -61,7 +61,10 @@ class ActorCritic(nn.Module):
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*layers)
 
-        self.res_block = ResidualBlock(filters[-1])
+        n_res = getattr(cfg, 'n_res_blocks', 4)
+        self.res_blocks = nn.Sequential(
+            *[ResidualBlock(filters[-1]) for _ in range(n_res)]
+        )
 
         conv_flat = filters[-1] * cfg.board_size * cfg.board_size  
 
@@ -120,7 +123,7 @@ class ActorCritic(nn.Module):
         """
         # Board pathway
         x = self.conv_backbone(vec_board)
-        x = self.res_block(x)
+        x = self.res_blocks(x)
         x = x.view(x.size(0), -1)  # flatten
 
         # State pathway
