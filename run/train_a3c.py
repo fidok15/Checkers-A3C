@@ -37,7 +37,7 @@ MAX_EPISODES = 50000000
 SAVE_INTERVAL_SEC = 600      
 UPDATE_GLOBAL_ITER = 20      
 GAMMA = 0.99                  
-ENTROPY_BETA = 0.05          
+ENTROPY_BETA = 0.01         
 LR = 0.0001                  
 
 class Worker(mp.Process):
@@ -71,25 +71,26 @@ class Worker(mp.Process):
             
             while True:
                 # 1. Pobranie stanu
+
                 vec_board, vec_state = self.env.to_vector()
-                s_board = torch.tensor(vec_board, dtype=torch.float).unsqueeze(0)
+                s_board = torch.tensor(vec_board, dtype=torch.float).unsqueeze(0)  # (1, 4, nsize, nsize)
                 s_state = torch.tensor(vec_state, dtype=torch.float).unsqueeze(0)
 
-                # 2. Wybór akcji
-                logits, _ = self.l_net(s_board, s_state)
+                log_probs, _ = self.l_net(s_board, s_state)
+
                 legal_moves = self.env.get_all_available_moves()
                 legal_ids = [m.id() for m in legal_moves]
-                
-                # Maskowanie nielegalnych ruchów
-                mask = torch.full_like(logits, -float('inf'))
+
+                mask = torch.full_like(log_probs, -float('inf'))
                 mask[0, legal_ids] = 0
-                masked_logits = logits + mask
-                
-                probs = F.softmax(masked_logits, dim=1)
+                masked_log_probs = log_probs + mask
+
+                probs = torch.exp(masked_log_probs)               # (1, n_actions)
+                probs = probs / probs.sum(dim=1, keepdim=True)    # ponowna normalizacja
+
                 action_idx = torch.multinomial(probs, 1).item()
                 move_obj = next(m for m in legal_moves if m.id() == action_idx)
 
-                # 3. Wykonanie ruchu
                 game_status = self.env.do_move(move_obj)
                 
                 r = 0
@@ -97,7 +98,7 @@ class Worker(mp.Process):
                 
                 if done:
                     winner = game_winner(game_status)
-                    if winner == 1 or winner == 2:  # ktoś wygrał
+                    if winner == 1 or winner == -1:  # ktoś wygrał
 
                         if winner != self.env.current_player:
                             r = 1.0
@@ -138,18 +139,24 @@ class Worker(mp.Process):
                     bvt = torch.tensor(buffer_v_target, dtype=torch.float).view(-1, 1)
 
                     # Forward pass lokalnej sieci
-                    logits, values = self.l_net(bs_board, bs_state)
-                    
-                    log_probs = F.log_softmax(logits, dim=1)
-                    log_prob_a = log_probs.gather(1, ba)
+                    log_probs, values = self.l_net(bs_board, bs_state)   # log_probs shape: (batch, n_actions)
+
+                    # Log-probabilities wykonanych akcji
+                    log_prob_a = log_probs.gather(1, ba)   # ba shape: (batch, 1)
+
+                    # Advantage
                     advantage = bvt - values.detach()
-                    
+
+                    # Policy loss
                     policy_loss = -(log_prob_a * advantage).mean()
+
+                    # Value loss
                     value_loss = F.mse_loss(values, bvt)
-                    
-                    probs_all = F.softmax(logits, dim=1)
+
+                    # Entropia (liczona z prawdopodobieństw i log_probs)
+                    probs_all = torch.exp(log_probs)
                     entropy = -(probs_all * log_probs).sum(1).mean()
-                    
+
                     total_loss = policy_loss + value_loss - ENTROPY_BETA * entropy
 
                     # Backward na lokalnej sieci (nie wymaga blokady)
