@@ -9,7 +9,6 @@ buffer and then PPO updates the policy.
 import sys
 import os
 import time
-import copy
 import random
 import argparse
 import glob
@@ -19,11 +18,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 import torch
+import torch.multiprocessing as mp
 from torch.utils.tensorboard import SummaryWriter
 
 from config import PPOConfig
 from model import ActorCritic
-from env_wrapper import SelfPlayEnv
+from env_wrapper import SelfPlayEnv, _FLIPPED_ACTION
 from ppo_algo import PPO
 from utils import Timer, ensure_dir, set_seed
 
@@ -31,6 +31,7 @@ from deepdraughts.env.py_env.env_utils import (
     WHITE, BLACK,
     GAME_WHITE_WIN, GAME_BLACK_WIN, GAME_DRAW,
     game_is_over, game_winner,
+    action2id,
 )
 from deepdraughts.mcts_pure import MCTSPlayer
 
@@ -45,8 +46,9 @@ class OpponentPool:
         self.max_size = max_size
 
     def add(self, model):
-        """Save a deep copy of the model's current weights."""
-        self.snapshots.append(copy.deepcopy(model.state_dict()))
+        """Save a CPU copy of the model's current weights."""
+        sd = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+        self.snapshots.append(sd)
         if len(self.snapshots) > self.max_size:
             self.snapshots.pop(0)
 
@@ -58,199 +60,337 @@ class OpponentPool:
         return len(self.snapshots)
 
 
-@torch.no_grad()
-def _opponent_move(env: SelfPlayEnv, model, device):
-    """Have the opponent model make one move. Returns (done, info)."""
-    vb, vs = env.env._get_obs()
-    mask = env.env.get_action_mask()
+# ── Parallel Worker ────────────────────────────────────────────────
 
-    vb_t = torch.tensor(vb, device=device, dtype=torch.float32).unsqueeze(0)
-    vs_t = torch.tensor(vs, device=device, dtype=torch.float32).unsqueeze(0)
-    am_t = torch.tensor(mask, device=device, dtype=torch.float32).unsqueeze(0)
-
-    logits, _ = model(vb_t, vs_t, am_t)
-    dist = torch.distributions.Categorical(logits=logits)
-    action = dist.sample().item()
-
-    _, _, done, info = env.step(action)
-    return done, info
+_worker_state: dict = {}
 
 
-def _mcts_opponent_move(env: SelfPlayEnv, mcts_player: MCTSPlayer):
-    """Have the MCTS opponent make one move. Returns (done, info)."""
-    move, _ = mcts_player.get_action(env.env.game)
-    from deepdraughts.env.py_env.env_utils import action2id
-    from env_wrapper import _FLIPPED_ACTION
-    action = action2id(move)
-    # The wrapper exposes flipped action IDs when Black is playing;
-    # MCTS returns the original move, so we must flip the ID to match.
-    if env.env._is_flipped:
-        action = _FLIPPED_ACTION.get(action, action)
-    _, _, done, info = env.step(action)
-    return done, info
-
-
-def _record_result(winner, learner_color, info, counters):
-    """Helper: update stats and learner win/loss/draw counters."""
-    counters["games"] += 1
-    counters["total_steps"] += info["step_count"]
-    
-    # Track by color
-    if winner == 1:  # WHITE
-        counters["white_wins"] += 1
-    elif winner == -1:  # BLACK
-        counters["black_wins"] += 1
-    else:
-        counters["draws"] += 1
-    
-    # Track learner performance
-    if winner == learner_color:
-        counters["learner_wins"] += 1
-    elif winner != 0:
-        counters["learner_losses"] += 1
-    else:
-        counters["learner_draws"] += 1
-
-
-def collect_rollout(ppo: PPO, envs: list, config: PPOConfig,
-                    opponent_model, opponent_pool: OpponentPool,
-                    mcts_player: MCTSPlayer | None = None):
+def _init_env_worker(config: PPOConfig):
     """
-    Collect a rollout from N parallel self-play environments.
-
-    Each env fills a contiguous block in the buffer so that GAE
-    bootstrapping stays correct (consecutive entries belong to the
-    same env).
+    Called once when a pool worker process starts.
+    Creates a local model, opponent model, env, and optional MCTS player
+    so they are reused across rollout calls (avoids re-creation overhead).
     """
-    buffer = ppo.buffer
-    buffer.reset()
-    ppo.model.eval()
+    global _worker_state
+    torch.set_num_threads(1)          # 1 PyTorch thread per worker
+    os.environ["OMP_NUM_THREADS"] = "1"
+    device = torch.device("cpu")      # workers always infer on CPU
+    _worker_state = {
+        "device": device,
+        "config": config,
+        "model": ActorCritic(config).to(device),
+        "opponent": ActorCritic(config).to(device),
+        "env": SelfPlayEnv(config),
+        "mcts_player": None,
+    }
+    if config.mcts_opponent_ratio > 0:
+        _worker_state["mcts_player"] = MCTSPlayer(
+            c_puct=5, n_playout=config.mcts_opponent_playouts
+        )
 
-    n_envs = len(envs)
-    steps_per_env = config.rollout_steps // n_envs
+
+def _env_worker_collect(args):
+    """
+    Worker function: collect transitions for one environment.
+    Runs entirely inside a child process (CPU-only inference).
+    Returns numpy arrays + counters + bootstrap info.
+    """
+    model_weights, opp_snapshots, steps_to_collect, seed = args
+
+    ws = _worker_state
+    device = ws["device"]
+    config = ws["config"]
+    model = ws["model"]
+    opponent_model = ws["opponent"]
+    env = ws["env"]
+    mcts_player = ws["mcts_player"]
+
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+
+    model.load_state_dict(model_weights)
+    model.eval()
+
+    # ── Local helpers (no global device / model references) ────────
+
+    @torch.no_grad()
+    def _select_action(vb, vs, am):
+        vb_t = torch.tensor(vb, device=device, dtype=torch.float32).unsqueeze(0)
+        vs_t = torch.tensor(vs, device=device, dtype=torch.float32).unsqueeze(0)
+        am_t = torch.tensor(am, device=device, dtype=torch.float32).unsqueeze(0)
+        a, lp, _, v = model.get_action_and_value(vb_t, vs_t, am_t)
+        return a.item(), lp.item(), v.item()
+
+    @torch.no_grad()
+    def _opp_move(env_w, opp_m):
+        vb, vs = env_w.env._get_obs()
+        am = env_w.env.get_action_mask()
+        vb_t = torch.tensor(vb, device=device, dtype=torch.float32).unsqueeze(0)
+        vs_t = torch.tensor(vs, device=device, dtype=torch.float32).unsqueeze(0)
+        am_t = torch.tensor(am, device=device, dtype=torch.float32).unsqueeze(0)
+        logits, _ = opp_m(vb_t, vs_t, am_t)
+        dist = torch.distributions.Categorical(logits=logits)
+        act = dist.sample().item()
+        _, _, d, i = env_w.step(act)
+        return d, i
+
+    def _mcts_move(env_w, mcts_p):
+        move, _ = mcts_p.get_action(env_w.env.game)
+        aid = action2id(move)
+        if env_w.env._is_flipped:
+            aid = _FLIPPED_ACTION.get(aid, aid)
+        _, _, d, i = env_w.step(aid)
+        return d, i
+
+    # ── Pre-allocate transition storage ────────────────────────────
+    bs = config.board_size
+    vec_boards = np.zeros((steps_to_collect, 4, bs, bs), dtype=np.float32)
+    vec_states = np.zeros((steps_to_collect, config.vec_state_dim), dtype=np.float32)
+    action_masks = np.zeros((steps_to_collect, config.n_actions), dtype=np.float32)
+    actions_arr = np.zeros(steps_to_collect, dtype=np.int64)
+    log_probs_arr = np.zeros(steps_to_collect, dtype=np.float32)
+    rewards_arr = np.zeros(steps_to_collect, dtype=np.float32)
+    values_arr = np.zeros(steps_to_collect, dtype=np.float32)
+    dones_arr = np.zeros(steps_to_collect, dtype=np.float32)
 
     counters = {
         "games": 0, "learner_wins": 0, "learner_losses": 0, "learner_draws": 0,
         "mcts_games": 0, "pool_games": 0,
         "white_wins": 0, "black_wins": 0, "draws": 0, "total_steps": 0,
     }
-    env_blocks = []  # (start, end, last_value, last_done) per env
 
-    for env_idx in range(n_envs):
-        env = envs[env_idx]
-        block_start = buffer.pos
-        stored = 0
-        game_active = False
-        use_mcts = False
-        obs = None
-        mask = None
-        learner_color = WHITE
+    def _record(winner, l_color, info):
+        counters["games"] += 1
+        counters["total_steps"] += info["step_count"]
+        if winner == 1:
+            counters["white_wins"] += 1
+        elif winner == -1:
+            counters["black_wins"] += 1
+        else:
+            counters["draws"] += 1
+        if winner == l_color:
+            counters["learner_wins"] += 1
+        elif winner != 0:
+            counters["learner_losses"] += 1
+        else:
+            counters["learner_draws"] += 1
 
-        while stored < steps_per_env:
-            # ── Start a new game if needed ────────────────────────
-            if not game_active:
-                obs, mask = env.reset()
-                learner_color = random.choice([WHITE, BLACK])
+    # ── Main collection loop ──────────────────────────────────────
+    stored = 0
+    game_active = False
+    use_mcts = False
+    obs = None
+    mask = None
+    learner_color = WHITE
 
-                use_mcts = (mcts_player is not None
-                            and random.random() < config.mcts_opponent_ratio)
+    while stored < steps_to_collect:
+        # ── Start a new game if needed ────────────────────────────
+        if not game_active:
+            obs, mask = env.reset()
+            learner_color = random.choice([WHITE, BLACK])
 
-                if use_mcts:
-                    mcts_player.reset()
-                    counters["mcts_games"] += 1
-                else:
-                    snap = opponent_pool.sample()
-                    opponent_model.load_state_dict(
-                        snap if snap is not None else ppo.model.state_dict()
-                    )
-                    opponent_model.eval()
-                    counters["pool_games"] += 1
+            use_mcts = (mcts_player is not None
+                        and random.random() < config.mcts_opponent_ratio)
 
-                opp_ended = False
-                while env.get_current_player() != learner_color:
-                    if use_mcts:
-                        done, info = _mcts_opponent_move(env, mcts_player)
-                    else:
-                        done, info = _opponent_move(env, opponent_model, ppo.device)
-                    if done:
-                        gs = info["game_status"]
-                        w = game_winner(gs) if game_is_over(gs) else 0
-                        _record_result(w, learner_color, info, counters)
-                        opp_ended = True
-                        break
-                if opp_ended:
-                    continue
+            if use_mcts:
+                mcts_player.reset()
+                counters["mcts_games"] += 1
+            else:
+                snap = random.choice(opp_snapshots) if opp_snapshots else model_weights
+                opponent_model.load_state_dict(snap)
+                opponent_model.eval()
+                counters["pool_games"] += 1
 
-                obs = env.env._get_obs()
-                mask = env.env.get_action_mask()
-                game_active = True
-
-            # ── Learner picks a move ──────────────────────────────
-            vb, vs = obs
-            action, log_prob, value = ppo.select_action(vb, vs, mask)
-            _, reward_l, done_l, info_l = env.step(action)
-
-            if done_l:
-                buffer.add(vb, vs, mask, action, log_prob, reward_l, value, True)
-                stored += 1
-                gs = info_l["game_status"]
-                w = game_winner(gs) if game_is_over(gs) else 0
-                _record_result(w, learner_color, info_l, counters)
-                game_active = False
-                continue
-
-            if env.get_current_player() == learner_color:
-                buffer.add(vb, vs, mask, action, log_prob, reward_l, value, False)
-                stored += 1
-                obs = env.env._get_obs()
-                mask = env.env.get_action_mask()
-                continue
-
-            # ── Opponent's turn(s) ────────────────────────────────
-            opp_ended_game = False
+            opp_ended = False
             while env.get_current_player() != learner_color:
                 if use_mcts:
-                    done_o, info_o = _mcts_opponent_move(env, mcts_player)
+                    done, info = _mcts_move(env, mcts_player)
                 else:
-                    done_o, info_o = _opponent_move(env, opponent_model, ppo.device)
-                if done_o:
-                    gs = info_o["game_status"]
+                    done, info = _opp_move(env, opponent_model)
+                if done:
+                    gs = info["game_status"]
                     w = game_winner(gs) if game_is_over(gs) else 0
-                    if w == learner_color:
-                        terminal_r = config.reward_win
-                    elif w != 0:
-                        terminal_r = config.reward_loss
-                    else:
-                        terminal_r = config.reward_draw
-                    buffer.add(vb, vs, mask, action, log_prob,
-                               reward_l + terminal_r, value, True)
-                    stored += 1
-                    _record_result(w, learner_color, info_o, counters)
-                    game_active = False
-                    opp_ended_game = True
+                    _record(w, learner_color, info)
+                    opp_ended = True
                     break
+            if opp_ended:
+                continue
 
-            if not opp_ended_game:
-                buffer.add(vb, vs, mask, action, log_prob,
-                           reward_l, value, False)
+            obs = env.env._get_obs()
+            mask = env.env.get_action_mask()
+            game_active = True
+
+        # ── Learner picks a move ──────────────────────────────────
+        vb, vs = obs
+        action, log_prob, value = _select_action(vb, vs, mask)
+        _, reward_l, done_l, info_l = env.step(action)
+
+        if done_l:
+            vec_boards[stored] = vb
+            vec_states[stored] = vs
+            action_masks[stored] = mask
+            actions_arr[stored] = action
+            log_probs_arr[stored] = log_prob
+            rewards_arr[stored] = reward_l
+            values_arr[stored] = value
+            dones_arr[stored] = 1.0
+            stored += 1
+            gs = info_l["game_status"]
+            w = game_winner(gs) if game_is_over(gs) else 0
+            _record(w, learner_color, info_l)
+            game_active = False
+            continue
+
+        if env.get_current_player() == learner_color:
+            vec_boards[stored] = vb
+            vec_states[stored] = vs
+            action_masks[stored] = mask
+            actions_arr[stored] = action
+            log_probs_arr[stored] = log_prob
+            rewards_arr[stored] = reward_l
+            values_arr[stored] = value
+            dones_arr[stored] = 0.0
+            stored += 1
+            obs = env.env._get_obs()
+            mask = env.env.get_action_mask()
+            continue
+
+        # ── Opponent's turn(s) ────────────────────────────────────
+        opp_ended_game = False
+        while env.get_current_player() != learner_color:
+            if use_mcts:
+                done_o, info_o = _mcts_move(env, mcts_player)
+            else:
+                done_o, info_o = _opp_move(env, opponent_model)
+            if done_o:
+                gs = info_o["game_status"]
+                w = game_winner(gs) if game_is_over(gs) else 0
+                if w == learner_color:
+                    terminal_r = config.reward_win
+                elif w != 0:
+                    terminal_r = config.reward_loss
+                else:
+                    terminal_r = config.reward_draw
+                vec_boards[stored] = vb
+                vec_states[stored] = vs
+                action_masks[stored] = mask
+                actions_arr[stored] = action
+                log_probs_arr[stored] = log_prob
+                rewards_arr[stored] = reward_l + terminal_r
+                values_arr[stored] = value
+                dones_arr[stored] = 1.0
                 stored += 1
-                obs = env.env._get_obs()
-                mask = env.env.get_action_mask()
+                _record(w, learner_color, info_o)
+                game_active = False
+                opp_ended_game = True
+                break
 
-        # ── Bootstrap this env's block ────────────────────────────
-        block_end = buffer.pos
-        if game_active:
-            vb_last, vs_last = obs
-            last_val = ppo.estimate_value(vb_last, vs_last, mask)
-            env_blocks.append((block_start, block_end, last_val, False))
-        else:
-            env_blocks.append((block_start, block_end, 0.0, True))
+        if not opp_ended_game:
+            vec_boards[stored] = vb
+            vec_states[stored] = vs
+            action_masks[stored] = mask
+            actions_arr[stored] = action
+            log_probs_arr[stored] = log_prob
+            rewards_arr[stored] = reward_l
+            values_arr[stored] = value
+            dones_arr[stored] = 0.0
+            stored += 1
+            obs = env.env._get_obs()
+            mask = env.env.get_action_mask()
 
-    # ── Compute GAE per env block ─────────────────────────────────
+    # ── Bootstrap for non-terminal last state ─────────────────────
+    last_value = 0.0
+    last_done = True
+    if game_active and obs is not None:
+        vb_last, vs_last = obs
+        with torch.no_grad():
+            vb_t = torch.tensor(vb_last, device=device, dtype=torch.float32).unsqueeze(0)
+            vs_t = torch.tensor(vs_last, device=device, dtype=torch.float32).unsqueeze(0)
+            am_t = torch.tensor(mask, device=device, dtype=torch.float32).unsqueeze(0)
+            last_value = model.get_value(vb_t, vs_t, am_t).item()
+        last_done = False
+
+    return {
+        "vec_boards": vec_boards[:stored],
+        "vec_states": vec_states[:stored],
+        "action_masks": action_masks[:stored],
+        "actions": actions_arr[:stored],
+        "log_probs": log_probs_arr[:stored],
+        "rewards": rewards_arr[:stored],
+        "values": values_arr[:stored],
+        "dones": dones_arr[:stored],
+        "n_stored": stored,
+        "counters": counters,
+        "last_value": last_value,
+        "last_done": last_done,
+    }
+
+
+# ── Parallel rollout collection ───────────────────────────────────
+
+def collect_rollout(ppo: PPO, pool, config: PPOConfig,
+                    opponent_pool: OpponentPool):
+    """
+    Collect a rollout from N worker processes in parallel.
+
+    Each worker runs one self-play environment, collects transitions as
+    numpy arrays, and returns them.  The main process aggregates results
+    into the PPO buffer and computes GAE per env block.
+    """
+    buffer = ppo.buffer
+    buffer.reset()
+
+    n_envs = config.n_envs
+    steps_per_env = config.rollout_steps // n_envs
+
+    # Prepare model weights on CPU for workers
+    model_weights = {k: v.cpu() for k, v in ppo.model.state_dict().items()}
+    opp_snapshots = list(opponent_pool.snapshots)  # already CPU
+
+    # Unique seed per worker per rollout
+    base_seed = random.randint(0, 2**31)
+    worker_args = [
+        (model_weights, opp_snapshots, steps_per_env, base_seed + i)
+        for i in range(n_envs)
+    ]
+
+    # Dispatch to worker pool (truly parallel – one process per env)
+    results = pool.map(_env_worker_collect, worker_args)
+
+    # Aggregate into buffer
+    merged_counters = {
+        "games": 0, "learner_wins": 0, "learner_losses": 0, "learner_draws": 0,
+        "mcts_games": 0, "pool_games": 0,
+        "white_wins": 0, "black_wins": 0, "draws": 0, "total_steps": 0,
+    }
+    env_blocks = []
+
+    for r in results:
+        n = r["n_stored"]
+        start = buffer.pos
+
+        buffer.vec_boards[start:start + n] = r["vec_boards"]
+        buffer.vec_states[start:start + n] = r["vec_states"]
+        buffer.action_masks[start:start + n] = r["action_masks"]
+        buffer.actions[start:start + n] = r["actions"]
+        buffer.log_probs[start:start + n] = r["log_probs"]
+        buffer.rewards[start:start + n] = r["rewards"]
+        buffer.values[start:start + n] = r["values"]
+        buffer.dones[start:start + n] = r["dones"]
+        buffer.pos += n
+
+        end = buffer.pos
+        env_blocks.append((start, end, r["last_value"], r["last_done"]))
+
+        for k in merged_counters:
+            merged_counters[k] += r["counters"][k]
+
+    # Compute GAE per env block
     for start, end, last_val, last_done in env_blocks:
         buffer.compute_gae_range(last_val, last_done, start, end)
 
-    return counters
+    return merged_counters
 
 
 def evaluate_vs_mcts(model, device, config, n_games=10, mcts_playouts=100):
@@ -301,19 +441,19 @@ def train(config: PPOConfig, resume_path: str | None = None):
             log_file.flush()
 
     ppo = PPO(config)
-    envs = [SelfPlayEnv(config) for _ in range(config.n_envs)]
 
     # Opponent pool for diverse training
-    opponent_model = ActorCritic(config).to(ppo.device)
     opponent_pool = OpponentPool(max_size=config.opponent_pool_size)
     opponent_pool.add(ppo.model)
 
-    # MCTS opponent (None if ratio == 0)
-    mcts_player = None
-    if config.mcts_opponent_ratio > 0:
-        mcts_player = MCTSPlayer(c_puct=5, n_playout=config.mcts_opponent_playouts)
-        log(f"MCTS opponent: {config.mcts_opponent_playouts} playouts, "
-            f"{config.mcts_opponent_ratio:.0%} of games", file_only_on_resume=True)
+    # Create persistent worker pool (processes stay alive between rollouts)
+    pool = mp.Pool(
+        processes=config.n_envs,
+        initializer=_init_env_worker,
+        initargs=(config,),
+    )
+    log(f"Worker pool: {config.n_envs} processes (CPU inference per worker)",
+        file_only_on_resume=True)
 
     total_steps = 0
     start_update = 0
@@ -338,9 +478,7 @@ def train(config: PPOConfig, resume_path: str | None = None):
 
     for update in range(start_update + 1, n_updates + 1):
         # --- Collect rollout ---
-        rollout_info = collect_rollout(ppo, envs, config,
-                                       opponent_model, opponent_pool,
-                                       mcts_player)
+        rollout_info = collect_rollout(ppo, pool, config, opponent_pool)
         total_steps += config.rollout_steps
 
         # --- Learning rate & entropy coefficient schedule (linear decay) ---
@@ -422,6 +560,8 @@ def train(config: PPOConfig, resume_path: str | None = None):
     log(f"Total time: {timer.elapsed_str()}")
     log_file.close()
     writer.close()
+    pool.close()
+    pool.join()
 
 
 if __name__ == "__main__":
@@ -430,6 +570,7 @@ if __name__ == "__main__":
     parser.add_argument("--total-steps", type=int, default=None, help="Total timesteps")
     parser.add_argument("--rollout-steps", type=int, default=None, help="Rollout length")
     parser.add_argument("--batch-size", type=int, default=None, help="Mini-batch size")
+    parser.add_argument("--n-envs", type=int, default=None, help="Number of parallel env workers (default: 20)")
     parser.add_argument("--no-gpu", action="store_true", help="Disable GPU")
     parser.add_argument("--resume", type=str, nargs="?", const="auto", default=None,
                         help="Resume training. Optionally provide a path; without a path, uses latest last_check_*.pt")
@@ -448,6 +589,8 @@ if __name__ == "__main__":
         cfg.rollout_steps = args.rollout_steps
     if args.batch_size is not None:
         cfg.batch_size = args.batch_size
+    if args.n_envs is not None:
+        cfg.n_envs = args.n_envs
     if args.no_gpu:
         cfg.use_gpu = False
     if args.mcts_ratio is not None:

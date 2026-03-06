@@ -12,3 +12,12 @@ Update 20/1220 | Steps: 163,840 | SPS: 106 | LWR: 51% | Pool:266 MCTS:57 | Games
 Update 30/1220 | Steps: 245,760 | SPS: 243 | LWR: 59% | Pool:268 MCTS:48 | Games: 308 | W: 47% | B: 53% | D: 0% | Len: 52 | PL: -0.0566 | VL: 0.1072 | Ent: 1.0817 | Time: 00:16:49
 Update 40/1220 | Steps: 327,680 | SPS: 92 | LWR: 52% | Pool:275 MCTS:46 | Games: 313 | W: 49% | B: 51% | D: 0% | Len: 52 | PL: -0.0588 | VL: 0.1123 | Ent: 1.0768 | Time: 00:59:35
 Update 50/1220 | Steps: 409,600 | SPS: 65 | LWR: 46% | Pool:269 MCTS:53 | Games: 315 | W: 50% | B: 50% | D: 0% | Len: 51 | PL: -0.0603 | VL: 0.1098 | Ent: 1.1229 | Time: 01:45:43
+Update 60/1220 | Steps: 491,520 | SPS: 190 | LWR: 56% | Pool:266 MCTS:52 | Games: 310 | W: 51% | B: 49% | D: 0% | Len: 52 | PL: -0.0568 | VL: 0.1089 | Ent: 1.0747 | Time: 00:43:11
+Update 70/1220 | Steps: 573,440 | SPS: 37 | LWR: 55% | Pool:268 MCTS:49 | Games: 310 | W: 45% | B: 55% | D: 0% | Len: 52 | PL: -0.0590 | VL: 0.1131 | Ent: 1.0601 | Time: 04:18:38
+Update 80/1220 | Steps: 655,360 | SPS: 24 | LWR: 57% | Pool:264 MCTS:48 | Games: 304 | W: 47% | B: 53% | D: 0% | Len: 53 | PL: -0.0563 | VL: 0.1100 | Ent: 1.0499 | Time: 07:27:14
+Update 90/1218 | Steps: 737,408 | SPS: 251 | LWR: 62% | Pool:274 MCTS:45 | Games: 301 | W: 47% | B: 52% | D: 0% | Len: 52 | PL: -0.0553 | VL: 0.1093 | Ent: 1.0517 | Time: 00:49:00
+Update 100/1218 | Steps: 819,488 | SPS: 151 | LWR: 59% | Pool:277 MCTS:37 | Games: 297 | W: 47% | B: 53% | D: 0% | Len: 53 | PL: -0.0593 | VL: 0.1096 | Ent: 1.0308 | Time: 01:30:17
+Update 110/1218 | Steps: 901,568 | SPS: 99 | LWR: 50% | Pool:263 MCTS:54 | Games: 299 | W: 43% | B: 57% | D: 0% | Len: 53 | PL: -0.0612 | VL: 0.1137 | Ent: 1.0490 | Time: 02:32:29
+Update 120/1218 | Steps: 983,648 | SPS: 76 | LWR: 52% | Pool:269 MCTS:46 | Games: 299 | W: 53% | B: 47% | D: 0% | Len: 54 | PL: -0.0591 | VL: 0.1113 | Ent: 1.0420 | Time: 03:36:04
+Update 130/1218 | Steps: 1,065,728 | SPS: 65 | LWR: 53% | Pool:282 MCTS:35 | Games: 299 | W: 55% | B: 44% | D: 1% | Len: 53 | PL: -0.0612 | VL: 0.1107 | Ent: 1.0378 | Time: 04:34:53
+Update 140/1218 | Steps: 1,147,808 | SPS: 56 | LWR: 48% | Pool:263 MCTS:55 | Games: 300 | W: 53% | B: 47% | D: 0% | Len: 53 | PL: -0.0561 | VL: 0.1179 | Ent: 1.0246 | Time: 05:39:22

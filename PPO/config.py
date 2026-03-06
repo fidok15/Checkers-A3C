@@ -2,7 +2,16 @@
 Hyperparameters for PPO training on Checkers (deepdraughts).
 """
 
+import os
 from dataclasses import dataclass, field
+
+def _auto_n_envs() -> int:
+    """Use all CPU cores minus 2 (for main process + OS). Minimum 2."""
+    return max(os.cpu_count() - 2, 2)
+
+def _auto_rollout_steps(n_envs: int, target: int = 16384) -> int:
+    """Round target up to nearest multiple of n_envs."""
+    return ((target + n_envs - 1) // n_envs) * n_envs
 
 @dataclass
 class PPOConfig:
@@ -32,11 +41,11 @@ class PPOConfig:
     # --- Training ---
     n_epochs: int = 4            # PPO epochs per update
     batch_size: int = 256        # mini-batch size (bigger → more stable gradients)
-    rollout_steps: int = 8192    # steps per rollout before update (more games per update)
-    n_envs: int = 8              # number of parallel self-play environments
+    rollout_steps: int = -1      # steps per rollout (-1 = auto: ~8192 rounded to n_envs)
+    n_envs: int = -1              # parallel workers (-1 = auto: cpu_count - 2)
     total_timesteps: int = 10_000_000  # total training timesteps
-    opponent_pool_size: int = 20     # max past model snapshots to keep
-    opponent_pool_interval: int = 10 # add current model to pool every N updates
+    opponent_pool_size: int = 60     # max past model snapshots to keep
+    opponent_pool_interval: int = 25 # add current model to pool every N updates
     mcts_opponent_ratio: float = 0.15 # fraction of games vs MCTS (0.0 = pure self-play, 1.0 = pure MCTS)
     mcts_opponent_playouts: int = 500 # MCTS playouts per move during training
 
@@ -56,3 +65,9 @@ class PPOConfig:
 
     # --- Device ---
     use_gpu: bool = True
+
+    def __post_init__(self):
+        if self.n_envs <= 0:
+            self.n_envs = _auto_n_envs()
+        if self.rollout_steps <= 0:
+            self.rollout_steps = _auto_rollout_steps(self.n_envs)
