@@ -175,6 +175,7 @@ class CheckersEnv:
             "step_count": self.step_count,
             "current_player": self.game.current_player,
             "player_before": player_before,
+            "captured": captured,
         }
         return obs, reward, done, info
 

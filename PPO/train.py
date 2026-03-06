@@ -12,6 +12,7 @@ import time
 import copy
 import random
 import argparse
+import glob
 
 # Make sure project root is on the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -111,132 +112,143 @@ def _record_result(winner, learner_color, info, counters):
         counters["learner_draws"] += 1
 
 
-def collect_rollout(ppo: PPO, env: SelfPlayEnv, config: PPOConfig,
+def collect_rollout(ppo: PPO, envs: list, config: PPOConfig,
                     opponent_model, opponent_pool: OpponentPool,
                     mcts_player: MCTSPlayer | None = None):
     """
-    Collect a rollout with an opponent sampled from the pool or MCTS.
+    Collect a rollout from N parallel self-play environments.
 
-    With probability config.mcts_opponent_ratio, the opponent is MCTS.
-    Otherwise, a random past snapshot from the pool is used.
+    Each env fills a contiguous block in the buffer so that GAE
+    bootstrapping stays correct (consecutive entries belong to the
+    same env).
     """
     buffer = ppo.buffer
     buffer.reset()
     ppo.model.eval()
 
-    stored = 0
+    n_envs = len(envs)
+    steps_per_env = config.rollout_steps // n_envs
+
     counters = {
         "games": 0, "learner_wins": 0, "learner_losses": 0, "learner_draws": 0,
         "mcts_games": 0, "pool_games": 0,
         "white_wins": 0, "black_wins": 0, "draws": 0, "total_steps": 0,
     }
-    game_active = False
-    use_mcts = False
+    env_blocks = []  # (start, end, last_value, last_done) per env
 
-    while stored < config.rollout_steps:
-        # ── Start a new game if needed ────────────────────────────
-        if not game_active:
-            obs, mask = env.reset()
-            learner_color = random.choice([WHITE, BLACK])
+    for env_idx in range(n_envs):
+        env = envs[env_idx]
+        block_start = buffer.pos
+        stored = 0
+        game_active = False
+        use_mcts = False
+        obs = None
+        mask = None
+        learner_color = WHITE
 
-            # Decide opponent type for this game
-            use_mcts = (mcts_player is not None
-                        and random.random() < config.mcts_opponent_ratio)
+        while stored < steps_per_env:
+            # ── Start a new game if needed ────────────────────────
+            if not game_active:
+                obs, mask = env.reset()
+                learner_color = random.choice([WHITE, BLACK])
 
-            if use_mcts:
-                mcts_player.reset()
-                counters["mcts_games"] += 1
-            else:
-                # Load random opponent from pool
-                snap = opponent_pool.sample()
-                opponent_model.load_state_dict(
-                    snap if snap is not None else ppo.model.state_dict()
-                )
-                opponent_model.eval()
-                counters["pool_games"] += 1
+                use_mcts = (mcts_player is not None
+                            and random.random() < config.mcts_opponent_ratio)
 
-            # Let opponent go first when learner is not the starting side
-            opp_ended = False
+                if use_mcts:
+                    mcts_player.reset()
+                    counters["mcts_games"] += 1
+                else:
+                    snap = opponent_pool.sample()
+                    opponent_model.load_state_dict(
+                        snap if snap is not None else ppo.model.state_dict()
+                    )
+                    opponent_model.eval()
+                    counters["pool_games"] += 1
+
+                opp_ended = False
+                while env.get_current_player() != learner_color:
+                    if use_mcts:
+                        done, info = _mcts_opponent_move(env, mcts_player)
+                    else:
+                        done, info = _opponent_move(env, opponent_model, ppo.device)
+                    if done:
+                        gs = info["game_status"]
+                        w = game_winner(gs) if game_is_over(gs) else 0
+                        _record_result(w, learner_color, info, counters)
+                        opp_ended = True
+                        break
+                if opp_ended:
+                    continue
+
+                obs = env.env._get_obs()
+                mask = env.env.get_action_mask()
+                game_active = True
+
+            # ── Learner picks a move ──────────────────────────────
+            vb, vs = obs
+            action, log_prob, value = ppo.select_action(vb, vs, mask)
+            _, reward_l, done_l, info_l = env.step(action)
+
+            if done_l:
+                buffer.add(vb, vs, mask, action, log_prob, reward_l, value, True)
+                stored += 1
+                gs = info_l["game_status"]
+                w = game_winner(gs) if game_is_over(gs) else 0
+                _record_result(w, learner_color, info_l, counters)
+                game_active = False
+                continue
+
+            if env.get_current_player() == learner_color:
+                buffer.add(vb, vs, mask, action, log_prob, reward_l, value, False)
+                stored += 1
+                obs = env.env._get_obs()
+                mask = env.env.get_action_mask()
+                continue
+
+            # ── Opponent's turn(s) ────────────────────────────────
+            opp_ended_game = False
             while env.get_current_player() != learner_color:
                 if use_mcts:
-                    done, info = _mcts_opponent_move(env, mcts_player)
+                    done_o, info_o = _mcts_opponent_move(env, mcts_player)
                 else:
-                    done, info = _opponent_move(env, opponent_model, ppo.device)
-                if done:
-                    gs = info["game_status"]
+                    done_o, info_o = _opponent_move(env, opponent_model, ppo.device)
+                if done_o:
+                    gs = info_o["game_status"]
                     w = game_winner(gs) if game_is_over(gs) else 0
-                    _record_result(w, learner_color, info, counters)
-                    opp_ended = True
+                    if w == learner_color:
+                        terminal_r = config.reward_win
+                    elif w != 0:
+                        terminal_r = config.reward_loss
+                    else:
+                        terminal_r = config.reward_draw
+                    buffer.add(vb, vs, mask, action, log_prob,
+                               reward_l + terminal_r, value, True)
+                    stored += 1
+                    _record_result(w, learner_color, info_o, counters)
+                    game_active = False
+                    opp_ended_game = True
                     break
-            if opp_ended:
-                continue  # start a fresh game
 
-            obs = env.env._get_obs()
-            mask = env.env.get_action_mask()
-            game_active = True
-
-        # ── Learner picks a move ──────────────────────────────────
-        vb, vs = obs
-        action, log_prob, value = ppo.select_action(vb, vs, mask)
-        _, reward_l, done_l, info_l = env.step(action)
-
-        if done_l:
-            # Learner's move ended the game
-            buffer.add(vb, vs, mask, action, log_prob, reward_l, value, True)
-            stored += 1
-            gs = info_l["game_status"]
-            w = game_winner(gs) if game_is_over(gs) else 0
-            _record_result(w, learner_color, info_l, counters)
-            game_active = False
-            continue
-
-        # Still learner's turn?  (chain capture continuation)
-        if env.get_current_player() == learner_color:
-            buffer.add(vb, vs, mask, action, log_prob, reward_l, value, False)
-            stored += 1
-            obs = env.env._get_obs()
-            mask = env.env.get_action_mask()
-            continue
-
-        # ── Opponent's turn(s) ────────────────────────────────────
-        opp_ended_game = False
-        while env.get_current_player() != learner_color:
-            if use_mcts:
-                done_o, info_o = _mcts_opponent_move(env, mcts_player)
-            else:
-                done_o, info_o = _opponent_move(env, opponent_model, ppo.device)
-            if done_o:
-                gs = info_o["game_status"]
-                w = game_winner(gs) if game_is_over(gs) else 0
-                # Terminal reward from learner's perspective
-                if w == learner_color:
-                    terminal_r = config.reward_win
-                elif w != 0:
-                    terminal_r = config.reward_loss
-                else:
-                    terminal_r = config.reward_draw
+            if not opp_ended_game:
                 buffer.add(vb, vs, mask, action, log_prob,
-                           reward_l + terminal_r, value, True)
+                           reward_l, value, False)
                 stored += 1
-                _record_result(w, learner_color, info_o, counters)
-                game_active = False
-                opp_ended_game = True
-                break
+                obs = env.env._get_obs()
+                mask = env.env.get_action_mask()
 
-        if not opp_ended_game:
-            # Opponent didn't end the game — store non-terminal transition
-            buffer.add(vb, vs, mask, action, log_prob, reward_l, value, False)
-            stored += 1
-            obs = env.env._get_obs()
-            mask = env.env.get_action_mask()
+        # ── Bootstrap this env's block ────────────────────────────
+        block_end = buffer.pos
+        if game_active:
+            vb_last, vs_last = obs
+            last_val = ppo.estimate_value(vb_last, vs_last, mask)
+            env_blocks.append((block_start, block_end, last_val, False))
+        else:
+            env_blocks.append((block_start, block_end, 0.0, True))
 
-    # ── Bootstrap last incomplete episode ─────────────────────────
-    if game_active:
-        vb, vs = obs
-        last_val = ppo.estimate_value(vb, vs, mask)
-        buffer.compute_gae(last_val, False)
-    else:
-        buffer.compute_gae(0.0, True)
+    # ── Compute GAE per env block ─────────────────────────────────
+    for start, end, last_val, last_done in env_blocks:
+        buffer.compute_gae_range(last_val, last_done, start, end)
 
     return counters
 
@@ -275,8 +287,21 @@ def train(config: PPOConfig, resume_path: str | None = None):
     writer = SummaryWriter(log_dir=config.log_dir)
     timer = Timer()
 
+    # Text log file — appends so resumed runs continue the same file
+    log_file_path = os.path.join(config.checkpoint_dir, "training_log.txt")
+    is_fresh_start = resume_path is None
+    log_file = open(log_file_path, "a", encoding="utf-8")
+
+    def log(msg: str, file_only_on_resume: bool = False):
+        """Print to terminal and append to log file.
+        If file_only_on_resume=True and we're resuming, skip writing to log file."""
+        print(msg)
+        if not (file_only_on_resume and not is_fresh_start):
+            log_file.write(msg + "\n")
+            log_file.flush()
+
     ppo = PPO(config)
-    env = SelfPlayEnv(config)
+    envs = [SelfPlayEnv(config) for _ in range(config.n_envs)]
 
     # Opponent pool for diverse training
     opponent_model = ActorCritic(config).to(ppo.device)
@@ -287,8 +312,8 @@ def train(config: PPOConfig, resume_path: str | None = None):
     mcts_player = None
     if config.mcts_opponent_ratio > 0:
         mcts_player = MCTSPlayer(c_puct=5, n_playout=config.mcts_opponent_playouts)
-        print(f"MCTS opponent: {config.mcts_opponent_playouts} playouts, "
-              f"{config.mcts_opponent_ratio:.0%} of games")
+        log(f"MCTS opponent: {config.mcts_opponent_playouts} playouts, "
+            f"{config.mcts_opponent_ratio:.0%} of games", file_only_on_resume=True)
 
     total_steps = 0
     start_update = 0
@@ -298,29 +323,29 @@ def train(config: PPOConfig, resume_path: str | None = None):
         total_steps = ppo.load(resume_path)
         start_update = ppo.update_count
         opponent_pool.add(ppo.model)  # add resumed model to pool
-        print(f"Resumed from {resume_path}")
-        print(f"  update_count = {start_update}, total_steps = {total_steps:,}")
+        log(f"Resumed from {resume_path}", file_only_on_resume=True)
+        log(f"  update_count = {start_update}, total_steps = {total_steps:,}", file_only_on_resume=True)
 
     update_num = start_update
     n_updates = config.total_timesteps // config.rollout_steps
 
-    print(f"Device: {ppo.device}")
-    print(f"Total timesteps: {config.total_timesteps:,}")
-    print(f"Rollout steps: {config.rollout_steps}")
-    print(f"Number of updates: {n_updates}")
-    print(f"Model parameters: {sum(p.numel() for p in ppo.model.parameters()):,}")
-    print("-" * 60)
+    log(f"Device: {ppo.device}", file_only_on_resume=True)
+    log(f"Total timesteps: {config.total_timesteps:,}", file_only_on_resume=True)
+    log(f"Rollout steps: {config.rollout_steps}", file_only_on_resume=True)
+    log(f"Number of updates: {n_updates}", file_only_on_resume=True)
+    log(f"Model parameters: {sum(p.numel() for p in ppo.model.parameters()):,}", file_only_on_resume=True)
+    log("-" * 60, file_only_on_resume=True)
 
     for update in range(start_update + 1, n_updates + 1):
         # --- Collect rollout ---
-        rollout_info = collect_rollout(ppo, env, config,
+        rollout_info = collect_rollout(ppo, envs, config,
                                        opponent_model, opponent_pool,
                                        mcts_player)
         total_steps += config.rollout_steps
 
         # --- Learning rate & entropy coefficient schedule (linear decay) ---
         progress = update / n_updates
-        current_lr = config.lr * (1.0 - progress)
+        current_lr = config.lr * max(1.0 - progress, config.lr_min_fraction)
         for param_group in ppo.optimizer.param_groups:
             param_group['lr'] = current_lr
         current_entropy_coef = config.entropy_coef + (config.entropy_coef_end - config.entropy_coef) * progress
@@ -369,7 +394,7 @@ def train(config: PPOConfig, resume_path: str | None = None):
             avg_len = ri["total_steps"] / n_games
             opp_str = f"Pool:{ri['pool_games']} MCTS:{ri['mcts_games']}"
             game_str = f"Games: {ri['games']} | W: {white_wr:.0%} | B: {black_wr:.0%} | D: {draw_r:.0%} | Len: {avg_len:.0f}"
-            print(
+            log(
                 f"Update {update}/{n_updates} | "
                 f"Steps: {total_steps:,} | "
                 f"SPS: {sps:.0f} | "
@@ -383,30 +408,19 @@ def train(config: PPOConfig, resume_path: str | None = None):
             )
 
         # --- Save last checkpoint (always overwritten) ---
-        last_path = os.path.join(config.checkpoint_dir, "last_checkpoint.pt")
+        last_path = os.path.join(config.checkpoint_dir, f"last_check_{total_steps}.pt")
         ppo.save(last_path, total_steps=total_steps)
-
-        # --- Numbered checkpoint ---
-        if update % config.save_interval == 0:
-            path = os.path.join(config.checkpoint_dir, f"ppo_checkers_{update}.pt")
-            ppo.save(path, total_steps=total_steps)
-            print(f"  -> Saved checkpoint: {path}")
-
-        # --- Periodic MCTS evaluation ---
-        if update % config.save_interval == 0:
-            ppo.model.eval()
-            print(f"  -> Evaluating vs MCTS...")
-            for playouts in [10, 100, 1000]:
-                wr = evaluate_vs_mcts(ppo.model, ppo.device, config,
-                                      n_games=10, mcts_playouts=playouts)
-                writer.add_scalar(f"eval/vs_mcts_{playouts}", wr, total_steps)
-                print(f"     MCTS-{playouts}: {wr:.0%} win rate (10 games)")
+        # Remove previous "last_check_*" to avoid clutter
+        for f in os.listdir(config.checkpoint_dir):
+            if f.startswith("last_check_") and f != os.path.basename(last_path):
+                os.remove(os.path.join(config.checkpoint_dir, f))
 
     # Final save
     final_path = os.path.join(config.checkpoint_dir, "ppo_checkers_final.pt")
     ppo.save(final_path, total_steps=total_steps)
-    print(f"\nTraining complete. Final model saved to {final_path}")
-    print(f"Total time: {timer.elapsed_str()}")
+    log(f"\nTraining complete. Final model saved to {final_path}")
+    log(f"Total time: {timer.elapsed_str()}")
+    log_file.close()
     writer.close()
 
 
@@ -417,7 +431,8 @@ if __name__ == "__main__":
     parser.add_argument("--rollout-steps", type=int, default=None, help="Rollout length")
     parser.add_argument("--batch-size", type=int, default=None, help="Mini-batch size")
     parser.add_argument("--no-gpu", action="store_true", help="Disable GPU")
-    parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint .pt file to resume training")
+    parser.add_argument("--resume", type=str, nargs="?", const="auto", default=None,
+                        help="Resume training. Optionally provide a path; without a path, uses latest last_check_*.pt")
     parser.add_argument("--mcts-ratio", type=float, default=None, help="Fraction of games vs MCTS (0.0-1.0)")
     parser.add_argument("--mcts-playouts", type=int, default=None, help="MCTS playouts per move during training")
     parser.add_argument("--checkpoint-dir", type=str, default=None)
@@ -444,4 +459,16 @@ if __name__ == "__main__":
     if args.log_dir is not None:
         cfg.log_dir = args.log_dir
 
-    train(cfg, resume_path=args.resume)
+    # Auto-detect latest checkpoint if --resume given without path
+    resume_path = args.resume
+    if resume_path == "auto":
+        pattern = os.path.join(cfg.checkpoint_dir, "last_check_*.pt")
+        files = glob.glob(pattern)
+        if files:
+            resume_path = max(files, key=os.path.getmtime)
+            print(f"Auto-detected latest checkpoint: {resume_path}")
+        else:
+            print(f"Error: No last_check_*.pt found in {cfg.checkpoint_dir}/")
+            sys.exit(1)
+
+    train(cfg, resume_path=resume_path)

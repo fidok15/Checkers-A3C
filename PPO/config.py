@@ -27,17 +27,18 @@ class PPOConfig:
     entropy_coef_end: float = 0.01  # entropy bonus end (decays linearly during training)
     value_coef: float = 0.5      # value loss coefficient
     max_grad_norm: float = 0.5   # gradient clipping
+    lr_min_fraction: float = 0.1 # minimum LR as fraction of initial (floor for linear decay)
 
     # --- Training ---
     n_epochs: int = 4            # PPO epochs per update
-    batch_size: int = 128        # mini-batch size (bigger → more stable gradients)
+    batch_size: int = 256        # mini-batch size (bigger → more stable gradients)
     rollout_steps: int = 8192    # steps per rollout before update (more games per update)
-    n_envs: int = 1              # number of parallel self-play environments
+    n_envs: int = 8              # number of parallel self-play environments
     total_timesteps: int = 10_000_000  # total training timesteps
     opponent_pool_size: int = 20     # max past model snapshots to keep
     opponent_pool_interval: int = 10 # add current model to pool every N updates
     mcts_opponent_ratio: float = 0.15 # fraction of games vs MCTS (0.0 = pure self-play, 1.0 = pure MCTS)
-    mcts_opponent_playouts: int = 100 # MCTS playouts per move during training
+    mcts_opponent_playouts: int = 500 # MCTS playouts per move during training
 
     # --- Rewards ---
     reward_win: float = 1.0

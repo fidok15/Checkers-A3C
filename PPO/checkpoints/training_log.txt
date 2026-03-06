@@ -1,0 +1,14 @@
+MCTS opponent: 500 playouts, 15% of games
+MCTS opponent: 500 playouts, 15% of games
+Resumed from checkpoints/last_check_114688.pt
+  update_count = 14, total_steps = 114,688
+Device: cpu
+Total timesteps: 10,000,000
+Rollout steps: 8192
+Number of updates: 1220
+Model parameters: 1,914,025
+------------------------------------------------------------
+Update 20/1220 | Steps: 163,840 | SPS: 106 | LWR: 51% | Pool:266 MCTS:57 | Games: 316 | W: 49% | B: 51% | D: 0% | Len: 51 | PL: -0.0602 | VL: 0.1144 | Ent: 1.1358 | Time: 00:25:38
+Update 30/1220 | Steps: 245,760 | SPS: 243 | LWR: 59% | Pool:268 MCTS:48 | Games: 308 | W: 47% | B: 53% | D: 0% | Len: 52 | PL: -0.0566 | VL: 0.1072 | Ent: 1.0817 | Time: 00:16:49
+Update 40/1220 | Steps: 327,680 | SPS: 92 | LWR: 52% | Pool:275 MCTS:46 | Games: 313 | W: 49% | B: 51% | D: 0% | Len: 52 | PL: -0.0588 | VL: 0.1123 | Ent: 1.0768 | Time: 00:59:35
+Update 50/1220 | Steps: 409,600 | SPS: 65 | LWR: 46% | Pool:269 MCTS:53 | Games: 315 | W: 50% | B: 50% | D: 0% | Len: 51 | PL: -0.0603 | VL: 0.1098 | Ent: 1.1229 | Time: 01:45:43

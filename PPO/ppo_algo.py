@@ -57,26 +57,28 @@ class RolloutBuffer:
         self.pos = 0
 
     def compute_gae(self, last_value: float, last_done: bool):
-        """
-        Standard single-player GAE.
+        """Compute GAE over the entire buffer (delegates to compute_gae_range)."""
+        self.compute_gae_range(last_value, last_done, 0, self.pos)
 
-        With the opponent pool, all buffer entries are from the LEARNER's
-        perspective.  Consecutive non-terminal entries are consecutive
-        learner turns (the opponent moved in between as part of the
-        environment dynamics).  No negation is needed.
+    def compute_gae_range(self, last_value: float, last_done: bool, start: int, end: int):
+        """
+        Compute GAE for a contiguous sub-range [start, end) of the buffer.
+
+        Used by the multi-env collector where each env fills its own
+        contiguous block.  Value bootstrapping stays correct within
+        each block because consecutive entries belong to the same env.
         """
         gamma = self.cfg.gamma
         lam = self.cfg.gae_lambda
-        n = self.pos
 
         last_gae = 0.0
-        for t in reversed(range(n)):
+        for t in reversed(range(start, end)):
             if self.dones[t]:
                 # Terminal step – no next state to bootstrap from.
                 delta = self.rewards[t] - self.values[t]
                 last_gae = delta
             else:
-                if t == n - 1:
+                if t == end - 1:
                     next_value = 0.0 if last_done else last_value
                 else:
                     next_value = self.values[t + 1]
@@ -86,7 +88,7 @@ class RolloutBuffer:
 
             self.advantages[t] = last_gae
 
-        self.returns[:n] = self.advantages[:n] + self.values[:n]
+        self.returns[start:end] = self.advantages[start:end] + self.values[start:end]
 
     def get_batches(self, batch_size: int):
         """Yield mini-batch indices (shuffled)."""
@@ -107,6 +109,7 @@ class RolloutBuffer:
             torch.tensor(self.log_probs[indices], device=self.device),
             torch.tensor(self.returns[indices], device=self.device),
             torch.tensor(self.advantages[indices], device=self.device),
+            torch.tensor(self.values[indices], device=self.device),  # old values for V clipping
         )
 
 
@@ -176,7 +179,7 @@ class PPO:
                 (
                     b_boards, b_states, b_masks,
                     b_actions, b_old_logprobs,
-                    b_returns, b_advantages,
+                    b_returns, b_advantages, b_old_values,
                 ) = self.buffer.to_tensors(batch_idx)
 
                 # Normalize advantages
@@ -196,7 +199,12 @@ class PPO:
                 pg_loss = -torch.min(surr1, surr2).mean()
 
                 # Value loss (clipped)
-                v_loss = F.mse_loss(new_values, b_returns)
+                v_unclipped = (new_values - b_returns) ** 2
+                v_clipped = b_old_values + torch.clamp(
+                    new_values - b_old_values, -cfg.clip_eps, cfg.clip_eps
+                )
+                v_clipped_loss = (v_clipped - b_returns) ** 2
+                v_loss = 0.5 * torch.max(v_unclipped, v_clipped_loss).mean()
 
                 # Entropy bonus
                 entropy_loss = -entropy.mean()

@@ -66,7 +66,14 @@ class ActorCritic(nn.Module):
             *[ResidualBlock(filters[-1]) for _ in range(n_res)]
         )
 
-        conv_flat = filters[-1] * cfg.board_size * cfg.board_size  
+        # 1×1 conv to reduce channels before flatten (preserves spatial info)
+        reduce_ch = 16
+        self.conv_reduce = nn.Sequential(
+            nn.Conv2d(filters[-1], reduce_ch, kernel_size=1),
+            nn.BatchNorm2d(reduce_ch),
+            nn.ReLU(inplace=True),
+        )
+        conv_flat = reduce_ch * cfg.board_size * cfg.board_size  # 16*8*8 = 1024
 
         # --- State encoder ---
         self.state_encoder = nn.Sequential(
@@ -76,7 +83,7 @@ class ActorCritic(nn.Module):
             nn.ReLU(),
         )
 
-        combined_dim = conv_flat + cfg.state_hidden  # 8192 + 64 = 8256
+        combined_dim = conv_flat + cfg.state_hidden  # 1024 + 64 = 1088
 
         # --- Policy head ---
         self.policy_head = nn.Sequential(
@@ -124,7 +131,8 @@ class ActorCritic(nn.Module):
         # Board pathway
         x = self.conv_backbone(vec_board)
         x = self.res_blocks(x)
-        x = x.view(x.size(0), -1)  # flatten
+        x = self.conv_reduce(x)
+        x = x.view(x.size(0), -1)  # flatten (B, 16*8*8)
 
         # State pathway
         s = self.state_encoder(vec_state)

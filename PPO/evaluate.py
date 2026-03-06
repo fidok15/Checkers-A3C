@@ -13,6 +13,7 @@ import sys
 import os
 import argparse
 import time
+import glob
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -192,13 +193,31 @@ def evaluate(checkpoint_path, n_games, mcts_playouts, use_gpu=False, max_steps=3
     print("=" * 60)
 
 
+def find_latest_checkpoint(checkpoint_dir="checkpoints"):
+    """Find the most recent last_check_*.pt file."""
+    pattern = os.path.join(checkpoint_dir, "last_check_*.pt")
+    files = glob.glob(pattern)
+    if not files:
+        return None
+    # Extract step count from filename and pick the highest
+    return max(files, key=os.path.getmtime)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate PPO vs Pure MCTS")
-    parser.add_argument("--checkpoint", type=str, required=True, help="Path to PPO .pt checkpoint")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Path to PPO .pt checkpoint (default: latest last_check_*.pt)")
     parser.add_argument("--games", type=int, default=25, help="Number of games PER SIDE (total = 2x this)")
     parser.add_argument("--mcts-playouts", type=int, default=1000, help="MCTS playouts per move (higher = stronger)")
     parser.add_argument("--max-steps", type=int, default=300, help="Max moves per game")
     parser.add_argument("--gpu", action="store_true", help="Use GPU")
     args = parser.parse_args()
 
-    evaluate(args.checkpoint, args.games, args.mcts_playouts, args.gpu, args.max_steps)
+    checkpoint = args.checkpoint
+    if checkpoint is None:
+        checkpoint = find_latest_checkpoint()
+        if checkpoint is None:
+            print("Error: No checkpoint found in checkpoints/. Use --checkpoint to specify one.")
+            sys.exit(1)
+        print(f"Auto-detected latest checkpoint: {checkpoint}")
+
+    evaluate(checkpoint, args.games, args.mcts_playouts, args.gpu, args.max_steps)
