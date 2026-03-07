@@ -402,9 +402,6 @@ def set_board(boardsize = CONST_N_GRID_64):
 set_rule()
 set_board()
 
-print("rule", current_rule)
-print("board", current_borad)
-
 def get_env_args():
     '''
     Returns: 

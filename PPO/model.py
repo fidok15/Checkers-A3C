@@ -67,13 +67,13 @@ class ActorCritic(nn.Module):
         )
 
         # 1×1 conv to reduce channels before flatten (preserves spatial info)
-        reduce_ch = 16
+        reduce_ch = 32
         self.conv_reduce = nn.Sequential(
             nn.Conv2d(filters[-1], reduce_ch, kernel_size=1),
             nn.BatchNorm2d(reduce_ch),
             nn.ReLU(inplace=True),
         )
-        conv_flat = reduce_ch * cfg.board_size * cfg.board_size  # 16*8*8 = 1024
+        conv_flat = reduce_ch * cfg.board_size * cfg.board_size  # 32*8*8 = 2048
 
         # --- State encoder ---
         self.state_encoder = nn.Sequential(
