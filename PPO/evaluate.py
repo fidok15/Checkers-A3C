@@ -206,8 +206,8 @@ def find_latest_checkpoint(checkpoint_dir="checkpoints"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate PPO vs Pure MCTS")
     parser.add_argument("--checkpoint", type=str, default=None, help="Path to PPO .pt checkpoint (default: latest last_check_*.pt)")
-    parser.add_argument("--games", type=int, default=25, help="Number of games PER SIDE (total = 2x this)")
-    parser.add_argument("--mcts-playouts", type=int, default=1000, help="MCTS playouts per move (higher = stronger)")
+    parser.add_argument("--games", type=int, default=20, help="Number of games PER SIDE (total = 2x this)")
+    parser.add_argument("--mcts-playouts", type=int, default=100, help="MCTS playouts per move (higher = stronger)")
     parser.add_argument("--max-steps", type=int, default=300, help="Max moves per game")
     parser.add_argument("--gpu", action="store_true", help="Use GPU")
     args = parser.parse_args()

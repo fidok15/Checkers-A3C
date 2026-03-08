@@ -32,6 +32,13 @@ def _flip_pos(pos: int) -> int:
     return 63 - pos
 
 
+# Board flip permutation for canonical Black perspective.
+# _flip_pos uses 1-indexed: q -> 63-q.  In 0-indexed: p -> 61-p.
+# [:, ::-1, ::-1] does p -> 63-p (off-by-2), so we need a custom perm.
+_BOARD_FLIP_PERM = np.arange(64)
+_BOARD_FLIP_PERM[:62] = np.arange(61, -1, -1)  # [61, 60, ..., 1, 0]
+
+
 # Build reverse map: action_id -> (from_pos, to_pos)
 _ID_TO_MOVE = {aid: move for move, aid in MOVE_MAP_64.items()}
 
@@ -68,12 +75,12 @@ def canonical_observation(game):
     if is_black:
         vec_board = vec_board.copy()
         vec_board = np.concatenate([vec_board[2:4], vec_board[0:2]], axis=0)
-        vec_board = vec_board[:, ::-1, ::-1].copy()
+        vec_board = vec_board.reshape(4, 64)[:, _BOARD_FLIP_PERM].reshape(4, 8, 8).copy()
         vec_state = vec_state.copy()
         vec_state[0] = 1
         n_chain = len(game.chain_taking_moves)
         for i in range(n_chain):
-            vec_state[i + 2] = 62 - vec_state[i + 2]
+            vec_state[i + 2] = 61 - vec_state[i + 2]
 
     moves = game.get_all_available_moves()
     legal_map = {}
@@ -218,14 +225,14 @@ class CheckersEnv:
             vec_board = vec_board.copy()
             # swap white <-> black channels
             vec_board = np.concatenate([vec_board[2:4], vec_board[0:2]], axis=0)
-            # 180° rotation so direction of play is consistent
-            vec_board = vec_board[:, ::-1, ::-1].copy()
+            # 180° board flip consistent with _flip_pos action mapping
+            vec_board = vec_board.reshape(4, 64)[:, _BOARD_FLIP_PERM].reshape(4, 8, 8).copy()
             vec_state = vec_state.copy()
             vec_state[0] = 1  # always "my turn"
-            # Flip chain-taking positions (stored as taken_pos - 1)
+            # Flip chain-taking positions (stored as taken_pos - 1, 0-indexed)
             n_chain = len(self.game.chain_taking_moves)
             for i in range(n_chain):
-                vec_state[i + 2] = 62 - vec_state[i + 2]
+                vec_state[i + 2] = 61 - vec_state[i + 2]
 
         return vec_board.astype(np.float32), vec_state.astype(np.float32)
 
