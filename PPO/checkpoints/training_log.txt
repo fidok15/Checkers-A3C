@@ -11,3 +11,6 @@ Update 30/6098 | Steps: 491,842 | SPS: 48 | LWR: 57% | Pool:543 MCTS:71 | Games:
 Update 40/6098 | Steps: 655,822 | SPS: 77 | LWR: 58% | Pool:541 MCTS:73 | Games: 596 | W: 46% | B: 54% | D: 1% | Len: 54 | PL: -0.0735 | VL: 0.1021 | Ent: 1.0055 | Time: 02:22:10
 Update 50/6095 | Steps: 819,842 | SPS: 1699 | LWR: 57% | Pool:550 MCTS:73 | Games: 598 | W: 52% | B: 47% | D: 1% | Len: 53 | PL: -0.0747 | VL: 0.1026 | Ent: 1.0450 | Time: 00:08:02
 Update 60/6095 | Steps: 983,902 | SPS: 631 | LWR: 54% | Pool:545 MCTS:66 | Games: 586 | W: 55% | B: 45% | D: 0% | Len: 54 | PL: -0.0768 | VL: 0.1050 | Ent: 1.0383 | Time: 00:25:59
+Update 70/6098 | Steps: 1,147,882 | SPS: 131 | LWR: 54% | Pool:560 MCTS:62 | Games: 604 | W: 48% | B: 52% | D: 0% | Len: 53 | PL: -0.0744 | VL: 0.1135 | Ent: 1.0445 | Time: 02:26:09
+Update 80/6098 | Steps: 1,311,862 | SPS: 75 | LWR: 56% | Pool:556 MCTS:65 | Games: 603 | W: 52% | B: 47% | D: 0% | Len: 53 | PL: -0.0743 | VL: 0.1087 | Ent: 1.0390 | Time: 04:52:01
+Update 90/6098 | Steps: 1,475,842 | SPS: 56 | LWR: 52% | Pool:551 MCTS:64 | Games: 597 | W: 54% | B: 46% | D: 0% | Len: 54 | PL: -0.0749 | VL: 0.1073 | Ent: 1.0335 | Time: 07:19:31
