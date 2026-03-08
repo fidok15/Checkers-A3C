@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 def _auto_n_envs() -> int:
     """Use all CPU cores minus 2 (for main process + OS). Minimum 2."""
-    return max(os.cpu_count() - 20, 2)
+    return max(os.cpu_count() - 2, 2)
 
 def _auto_rollout_steps(n_envs: int, target: int = 16384) -> int:
     """Round target up to nearest multiple of n_envs."""
