@@ -58,7 +58,7 @@ class PPOConfig:
     max_game_steps: int = 300    # max steps before forced draw
 
     # --- Logging & checkpoints ---
-    log_interval: int = 10       # log every N updates
+    log_interval: int = 1        # log every N updates
     save_interval: int = 100     # save model every N updates
     checkpoint_dir: str = "checkpoints"
     log_dir: str = "logs"

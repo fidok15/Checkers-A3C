@@ -1,16 +1,101 @@
-Worker pool: 8 processes (CPU inference per worker)
+Worker pool: 18 processes (CPU inference per worker)
 Device: cpu
 Total timesteps: 100,000,000
-Rollout steps: 16384
-Number of updates: 6103
+Rollout steps: 16398
+Number of updates: 6098
 Model parameters: 2,440,409
 ------------------------------------------------------------
-    Update 10/6098 | Steps: 163,882 | SPS: 124 | LWR: 56% | Pool:557 MCTS:69 | Games: 609 | W: 46% | B: 53% | D: 0% | Len: 53 | PL: -0.0754 | VL: 0.0952 | Ent: 1.1110 | Time: 00:21:58
-Update 20/6098 | Steps: 327,862 | SPS: 59 | LWR: 57% | Pool:572 MCTS:59 | Games: 613 | W: 46% | B: 54% | D: 0% | Len: 52 | PL: -0.0732 | VL: 0.1005 | Ent: 1.0762 | Time: 01:32:45
-Update 30/6098 | Steps: 491,842 | SPS: 48 | LWR: 57% | Pool:543 MCTS:71 | Games: 596 | W: 48% | B: 52% | D: 1% | Len: 54 | PL: -0.0738 | VL: 0.1119 | Ent: 1.0628 | Time: 02:51:55
-Update 40/6098 | Steps: 655,822 | SPS: 77 | LWR: 58% | Pool:541 MCTS:73 | Games: 596 | W: 46% | B: 54% | D: 1% | Len: 54 | PL: -0.0735 | VL: 0.1021 | Ent: 1.0055 | Time: 02:22:10
-Update 50/6095 | Steps: 819,842 | SPS: 1699 | LWR: 57% | Pool:550 MCTS:73 | Games: 598 | W: 52% | B: 47% | D: 1% | Len: 53 | PL: -0.0747 | VL: 0.1026 | Ent: 1.0450 | Time: 00:08:02
-Update 60/6095 | Steps: 983,902 | SPS: 631 | LWR: 54% | Pool:545 MCTS:66 | Games: 586 | W: 55% | B: 45% | D: 0% | Len: 54 | PL: -0.0768 | VL: 0.1050 | Ent: 1.0383 | Time: 00:25:59
-Update 70/6098 | Steps: 1,147,882 | SPS: 131 | LWR: 54% | Pool:560 MCTS:62 | Games: 604 | W: 48% | B: 52% | D: 0% | Len: 53 | PL: -0.0744 | VL: 0.1135 | Ent: 1.0445 | Time: 02:26:09
-Update 80/6098 | Steps: 1,311,862 | SPS: 75 | LWR: 56% | Pool:556 MCTS:65 | Games: 603 | W: 52% | B: 47% | D: 0% | Len: 53 | PL: -0.0743 | VL: 0.1087 | Ent: 1.0390 | Time: 04:52:01
-Update 90/6098 | Steps: 1,475,842 | SPS: 56 | LWR: 52% | Pool:551 MCTS:64 | Games: 597 | W: 54% | B: 46% | D: 0% | Len: 54 | PL: -0.0749 | VL: 0.1073 | Ent: 1.0335 | Time: 07:19:31
+Update 1/6098 | Steps: 16,398 | SPS: 38 | LWR: 45% | Pool:594 MCTS:51 | Games: 628 | W: 51% | B: 49% | D: 0% | Len: 52 | PL: -0.0582 | VL: 0.3552 | Ent: 1.2607 | Time: 00:07:12
+Update 2/6098 | Steps: 32,796 | SPS: 38 | LWR: 50% | Pool:560 MCTS:75 | Games: 617 | W: 48% | B: 52% | D: 0% | Len: 52 | PL: -0.0845 | VL: 0.1563 | Ent: 1.2367 | Time: 00:14:13
+Update 3/6098 | Steps: 49,194 | SPS: 39 | LWR: 51% | Pool:587 MCTS:57 | Games: 627 | W: 51% | B: 49% | D: 0% | Len: 51 | PL: -0.0820 | VL: 0.1252 | Ent: 1.1981 | Time: 00:21:10
+Update 4/6098 | Steps: 65,592 | SPS: 39 | LWR: 55% | Pool:570 MCTS:72 | Games: 624 | W: 46% | B: 54% | D: 0% | Len: 52 | PL: -0.0797 | VL: 0.1095 | Ent: 1.1718 | Time: 00:28:11
+Update 5/6098 | Steps: 81,990 | SPS: 39 | LWR: 57% | Pool:586 MCTS:61 | Games: 632 | W: 48% | B: 52% | D: 0% | Len: 51 | PL: -0.0759 | VL: 0.1033 | Ent: 1.1509 | Time: 00:35:28
+Update 6/6098 | Steps: 98,388 | SPS: 38 | LWR: 53% | Pool:566 MCTS:66 | Games: 615 | W: 51% | B: 49% | D: 0% | Len: 52 | PL: -0.0751 | VL: 0.1084 | Ent: 1.1467 | Time: 00:42:50
+Update 7/6098 | Steps: 114,786 | SPS: 38 | LWR: 59% | Pool:567 MCTS:58 | Games: 608 | W: 46% | B: 54% | D: 0% | Len: 53 | PL: -0.0747 | VL: 0.1024 | Ent: 1.1301 | Time: 00:50:10
+Update 8/6098 | Steps: 131,184 | SPS: 38 | LWR: 53% | Pool:572 MCTS:65 | Games: 620 | W: 46% | B: 54% | D: 0% | Len: 52 | PL: -0.0745 | VL: 0.1154 | Ent: 1.1341 | Time: 00:57:31
+Update 9/6098 | Steps: 147,582 | SPS: 38 | LWR: 60% | Pool:564 MCTS:76 | Games: 623 | W: 48% | B: 52% | D: 0% | Len: 52 | PL: -0.0689 | VL: 0.1097 | Ent: 1.0968 | Time: 01:04:59
+Update 10/6098 | Steps: 163,980 | SPS: 38 | LWR: 59% | Pool:563 MCTS:73 | Games: 620 | W: 49% | B: 51% | D: 0% | Len: 52 | PL: -0.0726 | VL: 0.1044 | Ent: 1.0878 | Time: 01:12:23
+Update 11/6098 | Steps: 180,378 | SPS: 38 | LWR: 54% | Pool:556 MCTS:67 | Games: 605 | W: 46% | B: 54% | D: 0% | Len: 53 | PL: -0.0741 | VL: 0.1100 | Ent: 1.0904 | Time: 01:19:54
+Update 12/6098 | Steps: 196,776 | SPS: 38 | LWR: 60% | Pool:571 MCTS:52 | Games: 605 | W: 48% | B: 52% | D: 0% | Len: 53 | PL: -0.0716 | VL: 0.1051 | Ent: 1.0716 | Time: 01:27:18
+Update 13/6098 | Steps: 213,174 | SPS: 38 | LWR: 63% | Pool:563 MCTS:54 | Games: 600 | W: 49% | B: 51% | D: 0% | Len: 53 | PL: -0.0704 | VL: 0.1024 | Ent: 1.0691 | Time: 01:34:42
+Update 14/6098 | Steps: 229,572 | SPS: 37 | LWR: 59% | Pool:549 MCTS:70 | Games: 601 | W: 50% | B: 50% | D: 0% | Len: 53 | PL: -0.0721 | VL: 0.1095 | Ent: 1.0740 | Time: 01:42:08
+Update 15/6098 | Steps: 245,970 | SPS: 37 | LWR: 64% | Pool:555 MCTS:61 | Games: 598 | W: 49% | B: 51% | D: 0% | Len: 53 | PL: -0.0703 | VL: 0.0974 | Ent: 1.0784 | Time: 01:49:28
+Update 16/6098 | Steps: 262,368 | SPS: 37 | LWR: 59% | Pool:548 MCTS:66 | Games: 597 | W: 50% | B: 50% | D: 0% | Len: 54 | PL: -0.0735 | VL: 0.1080 | Ent: 1.0796 | Time: 01:56:55
+Update 17/6098 | Steps: 278,766 | SPS: 37 | LWR: 59% | Pool:549 MCTS:59 | Games: 590 | W: 48% | B: 52% | D: 0% | Len: 54 | PL: -0.0744 | VL: 0.1000 | Ent: 1.1023 | Time: 02:04:15
+Update 18/6098 | Steps: 295,164 | SPS: 37 | LWR: 58% | Pool:550 MCTS:64 | Games: 596 | W: 49% | B: 51% | D: 0% | Len: 54 | PL: -0.0743 | VL: 0.1037 | Ent: 1.0869 | Time: 02:11:43
+Update 19/6098 | Steps: 311,562 | SPS: 37 | LWR: 57% | Pool:548 MCTS:70 | Games: 602 | W: 51% | B: 49% | D: 0% | Len: 53 | PL: -0.0729 | VL: 0.1113 | Ent: 1.0762 | Time: 02:18:59
+Update 20/6098 | Steps: 327,960 | SPS: 37 | LWR: 64% | Pool:549 MCTS:59 | Games: 591 | W: 48% | B: 52% | D: 0% | Len: 54 | PL: -0.0708 | VL: 0.1062 | Ent: 1.0636 | Time: 02:26:05
+Update 21/6098 | Steps: 344,358 | SPS: 37 | LWR: 57% | Pool:532 MCTS:77 | Games: 594 | W: 50% | B: 50% | D: 0% | Len: 54 | PL: -0.0724 | VL: 0.1075 | Ent: 1.0441 | Time: 02:33:13
+Update 22/6098 | Steps: 360,756 | SPS: 37 | LWR: 61% | Pool:549 MCTS:60 | Games: 591 | W: 49% | B: 50% | D: 1% | Len: 54 | PL: -0.0713 | VL: 0.0992 | Ent: 1.0435 | Time: 02:40:32
+Update 23/6098 | Steps: 377,154 | SPS: 37 | LWR: 58% | Pool:547 MCTS:68 | Games: 597 | W: 52% | B: 47% | D: 1% | Len: 54 | PL: -0.0710 | VL: 0.1062 | Ent: 1.0359 | Time: 02:47:49
+Update 24/6098 | Steps: 393,552 | SPS: 37 | LWR: 60% | Pool:560 MCTS:52 | Games: 594 | W: 51% | B: 49% | D: 0% | Len: 54 | PL: -0.0709 | VL: 0.1004 | Ent: 1.0516 | Time: 02:55:08
+Update 25/6098 | Steps: 409,950 | SPS: 37 | LWR: 60% | Pool:552 MCTS:52 | Games: 586 | W: 50% | B: 49% | D: 1% | Len: 55 | PL: -0.0713 | VL: 0.1088 | Ent: 1.0564 | Time: 03:02:25
+Update 26/6098 | Steps: 426,348 | SPS: 37 | LWR: 63% | Pool:554 MCTS:53 | Games: 589 | W: 49% | B: 51% | D: 0% | Len: 54 | PL: -0.0713 | VL: 0.1060 | Ent: 1.0559 | Time: 03:09:47
+Update 27/6098 | Steps: 442,746 | SPS: 37 | LWR: 57% | Pool:524 MCTS:80 | Games: 587 | W: 47% | B: 53% | D: 0% | Len: 55 | PL: -0.0731 | VL: 0.1090 | Ent: 1.0424 | Time: 03:17:11
+Update 28/6098 | Steps: 459,144 | SPS: 37 | LWR: 61% | Pool:556 MCTS:45 | Games: 583 | W: 46% | B: 54% | D: 0% | Len: 55 | PL: -0.0714 | VL: 0.1095 | Ent: 1.0364 | Time: 03:24:26
+Update 29/6098 | Steps: 475,542 | SPS: 37 | LWR: 59% | Pool:561 MCTS:56 | Games: 600 | W: 50% | B: 50% | D: 0% | Len: 53 | PL: -0.0731 | VL: 0.1037 | Ent: 1.0280 | Time: 03:31:47
+Update 30/6098 | Steps: 491,940 | SPS: 37 | LWR: 60% | Pool:540 MCTS:60 | Games: 583 | W: 47% | B: 53% | D: 1% | Len: 55 | PL: -0.0724 | VL: 0.1019 | Ent: 1.0426 | Time: 03:39:07
+Update 31/6098 | Steps: 508,338 | SPS: 37 | LWR: 58% | Pool:544 MCTS:54 | Games: 580 | W: 52% | B: 48% | D: 1% | Len: 55 | PL: -0.0744 | VL: 0.1066 | Ent: 1.0498 | Time: 03:46:23
+Update 32/6098 | Steps: 524,736 | SPS: 37 | LWR: 60% | Pool:540 MCTS:68 | Games: 591 | W: 48% | B: 51% | D: 0% | Len: 54 | PL: -0.0725 | VL: 0.0988 | Ent: 1.0354 | Time: 03:53:34
+Update 33/6098 | Steps: 541,134 | SPS: 37 | LWR: 55% | Pool:545 MCTS:59 | Games: 586 | W: 45% | B: 54% | D: 0% | Len: 55 | PL: -0.0762 | VL: 0.1059 | Ent: 1.0625 | Time: 04:00:52
+Update 34/6098 | Steps: 557,532 | SPS: 37 | LWR: 58% | Pool:544 MCTS:65 | Games: 591 | W: 50% | B: 50% | D: 0% | Len: 54 | PL: -0.0752 | VL: 0.1058 | Ent: 1.0683 | Time: 04:08:19
+Update 35/6098 | Steps: 573,930 | SPS: 37 | LWR: 51% | Pool:539 MCTS:64 | Games: 585 | W: 47% | B: 53% | D: 0% | Len: 55 | PL: -0.0766 | VL: 0.1057 | Ent: 1.0758 | Time: 04:15:44
+Update 36/6098 | Steps: 590,328 | SPS: 37 | LWR: 54% | Pool:540 MCTS:57 | Games: 581 | W: 51% | B: 49% | D: 0% | Len: 55 | PL: -0.0752 | VL: 0.1063 | Ent: 1.0659 | Time: 04:22:59
+Update 37/6098 | Steps: 606,726 | SPS: 37 | LWR: 54% | Pool:529 MCTS:61 | Games: 572 | W: 50% | B: 50% | D: 0% | Len: 56 | PL: -0.0761 | VL: 0.1075 | Ent: 1.0717 | Time: 04:30:24
+Update 38/6098 | Steps: 623,124 | SPS: 37 | LWR: 53% | Pool:539 MCTS:65 | Games: 586 | W: 49% | B: 51% | D: 0% | Len: 55 | PL: -0.0759 | VL: 0.1019 | Ent: 1.0788 | Time: 04:37:49
+Update 39/6098 | Steps: 639,522 | SPS: 37 | LWR: 57% | Pool:549 MCTS:53 | Games: 584 | W: 46% | B: 54% | D: 0% | Len: 55 | PL: -0.0746 | VL: 0.1088 | Ent: 1.0610 | Time: 04:45:08
+Update 40/6098 | Steps: 655,920 | SPS: 37 | LWR: 56% | Pool:541 MCTS:59 | Games: 583 | W: 49% | B: 50% | D: 0% | Len: 55 | PL: -0.0753 | VL: 0.1104 | Ent: 1.0605 | Time: 04:52:30
+Update 41/6098 | Steps: 672,318 | SPS: 37 | LWR: 54% | Pool:555 MCTS:60 | Games: 597 | W: 48% | B: 52% | D: 0% | Len: 54 | PL: -0.0745 | VL: 0.1046 | Ent: 1.0623 | Time: 04:59:51
+Update 42/6098 | Steps: 688,716 | SPS: 37 | LWR: 56% | Pool:548 MCTS:56 | Games: 586 | W: 48% | B: 52% | D: 0% | Len: 55 | PL: -0.0754 | VL: 0.1125 | Ent: 1.0624 | Time: 05:07:13
+Update 43/6098 | Steps: 705,114 | SPS: 37 | LWR: 57% | Pool:557 MCTS:49 | Games: 589 | W: 49% | B: 51% | D: 0% | Len: 55 | PL: -0.0765 | VL: 0.1127 | Ent: 1.0619 | Time: 05:14:36
+Update 44/6098 | Steps: 721,512 | SPS: 37 | LWR: 55% | Pool:530 MCTS:70 | Games: 582 | W: 51% | B: 49% | D: 0% | Len: 55 | PL: -0.0757 | VL: 0.1056 | Ent: 1.0631 | Time: 05:22:02
+Update 45/6098 | Steps: 737,910 | SPS: 37 | LWR: 58% | Pool:532 MCTS:65 | Games: 579 | W: 52% | B: 48% | D: 0% | Len: 55 | PL: -0.0753 | VL: 0.1057 | Ent: 1.0475 | Time: 05:29:26
+Update 46/6098 | Steps: 754,308 | SPS: 37 | LWR: 56% | Pool:534 MCTS:63 | Games: 579 | W: 48% | B: 51% | D: 1% | Len: 55 | PL: -0.0756 | VL: 0.1087 | Ent: 1.0533 | Time: 05:36:54
+Update 47/6098 | Steps: 770,706 | SPS: 37 | LWR: 58% | Pool:554 MCTS:46 | Games: 584 | W: 50% | B: 50% | D: 0% | Len: 55 | PL: -0.0751 | VL: 0.1106 | Ent: 1.0457 | Time: 05:44:17
+Update 48/6098 | Steps: 787,104 | SPS: 37 | LWR: 57% | Pool:548 MCTS:49 | Games: 582 | W: 50% | B: 50% | D: 1% | Len: 55 | PL: -0.0767 | VL: 0.1007 | Ent: 1.0611 | Time: 05:51:41
+Update 49/6098 | Steps: 803,502 | SPS: 37 | LWR: 55% | Pool:530 MCTS:64 | Games: 578 | W: 49% | B: 50% | D: 1% | Len: 56 | PL: -0.0743 | VL: 0.1052 | Ent: 1.0647 | Time: 05:59:13
+Update 50/6098 | Steps: 819,900 | SPS: 37 | LWR: 56% | Pool:550 MCTS:53 | Games: 586 | W: 51% | B: 49% | D: 0% | Len: 55 | PL: -0.0736 | VL: 0.1072 | Ent: 1.0493 | Time: 06:06:39
+Update 51/6098 | Steps: 836,298 | SPS: 37 | LWR: 56% | Pool:528 MCTS:63 | Games: 574 | W: 51% | B: 49% | D: 0% | Len: 56 | PL: -0.0754 | VL: 0.1057 | Ent: 1.0357 | Time: 06:14:13
+Update 52/6098 | Steps: 852,696 | SPS: 37 | LWR: 57% | Pool:538 MCTS:66 | Games: 587 | W: 52% | B: 48% | D: 0% | Len: 54 | PL: -0.0738 | VL: 0.1061 | Ent: 1.0156 | Time: 06:21:39
+Update 53/6098 | Steps: 869,094 | SPS: 37 | LWR: 59% | Pool:537 MCTS:56 | Games: 575 | W: 52% | B: 48% | D: 0% | Len: 55 | PL: -0.0754 | VL: 0.1019 | Ent: 1.0226 | Time: 06:29:07
+Update 54/6098 | Steps: 885,492 | SPS: 37 | LWR: 50% | Pool:544 MCTS:57 | Games: 583 | W: 50% | B: 50% | D: 0% | Len: 55 | PL: -0.0773 | VL: 0.1091 | Ent: 1.0275 | Time: 06:36:36
+Update 55/6098 | Steps: 901,890 | SPS: 37 | LWR: 60% | Pool:542 MCTS:51 | Games: 577 | W: 51% | B: 49% | D: 1% | Len: 55 | PL: -0.0759 | VL: 0.1041 | Ent: 1.0163 | Time: 06:44:02
+Update 56/6098 | Steps: 918,288 | SPS: 37 | LWR: 53% | Pool:520 MCTS:77 | Games: 581 | W: 53% | B: 47% | D: 1% | Len: 55 | PL: -0.0751 | VL: 0.1085 | Ent: 1.0234 | Time: 06:51:31
+Update 57/6098 | Steps: 934,686 | SPS: 37 | LWR: 56% | Pool:534 MCTS:65 | Games: 581 | W: 49% | B: 51% | D: 0% | Len: 55 | PL: -0.0753 | VL: 0.1049 | Ent: 1.0166 | Time: 06:58:59
+Update 58/6098 | Steps: 951,084 | SPS: 37 | LWR: 61% | Pool:555 MCTS:51 | Games: 588 | W: 52% | B: 48% | D: 0% | Len: 54 | PL: -0.0750 | VL: 0.1014 | Ent: 1.0298 | Time: 07:06:22
+Update 59/6098 | Steps: 967,482 | SPS: 37 | LWR: 54% | Pool:556 MCTS:55 | Games: 593 | W: 49% | B: 51% | D: 0% | Len: 54 | PL: -0.0755 | VL: 0.1063 | Ent: 1.0275 | Time: 07:13:54
+Update 60/6098 | Steps: 983,880 | SPS: 37 | LWR: 55% | Pool:531 MCTS:74 | Games: 587 | W: 55% | B: 45% | D: 0% | Len: 55 | PL: -0.0767 | VL: 0.1055 | Ent: 1.0356 | Time: 07:21:23
+Update 61/6098 | Steps: 1,000,278 | SPS: 37 | LWR: 54% | Pool:547 MCTS:65 | Games: 596 | W: 52% | B: 48% | D: 0% | Len: 54 | PL: -0.0747 | VL: 0.1026 | Ent: 1.0318 | Time: 07:28:48
+Update 62/6098 | Steps: 1,016,676 | SPS: 37 | LWR: 58% | Pool:537 MCTS:59 | Games: 580 | W: 47% | B: 52% | D: 0% | Len: 55 | PL: -0.0748 | VL: 0.1074 | Ent: 1.0229 | Time: 07:36:10
+Update 63/6098 | Steps: 1,033,074 | SPS: 37 | LWR: 59% | Pool:532 MCTS:60 | Games: 575 | W: 49% | B: 51% | D: 0% | Len: 55 | PL: -0.0762 | VL: 0.0991 | Ent: 1.0338 | Time: 07:43:41
+Update 64/6098 | Steps: 1,049,472 | SPS: 37 | LWR: 58% | Pool:554 MCTS:50 | Games: 587 | W: 51% | B: 49% | D: 0% | Len: 54 | PL: -0.0749 | VL: 0.1018 | Ent: 1.0435 | Time: 07:51:02
+Update 65/6098 | Steps: 1,065,870 | SPS: 37 | LWR: 59% | Pool:543 MCTS:58 | Games: 584 | W: 47% | B: 53% | D: 1% | Len: 55 | PL: -0.0756 | VL: 0.1024 | Ent: 1.0331 | Time: 07:58:26
+Update 66/6098 | Steps: 1,082,268 | SPS: 37 | LWR: 55% | Pool:538 MCTS:66 | Games: 586 | W: 52% | B: 48% | D: 0% | Len: 55 | PL: -0.0761 | VL: 0.1100 | Ent: 1.0332 | Time: 08:05:52
+Update 67/6098 | Steps: 1,098,666 | SPS: 37 | LWR: 53% | Pool:544 MCTS:51 | Games: 579 | W: 47% | B: 53% | D: 0% | Len: 55 | PL: -0.0770 | VL: 0.1100 | Ent: 1.0324 | Time: 08:13:12
+Update 68/6098 | Steps: 1,115,064 | SPS: 37 | LWR: 56% | Pool:544 MCTS:55 | Games: 581 | W: 48% | B: 51% | D: 1% | Len: 55 | PL: -0.0759 | VL: 0.1058 | Ent: 1.0310 | Time: 08:20:36
+Update 69/6098 | Steps: 1,131,462 | SPS: 37 | LWR: 51% | Pool:544 MCTS:56 | Games: 582 | W: 48% | B: 52% | D: 0% | Len: 55 | PL: -0.0767 | VL: 0.1169 | Ent: 1.0233 | Time: 08:27:49
+Update 70/6098 | Steps: 1,147,860 | SPS: 37 | LWR: 54% | Pool:548 MCTS:58 | Games: 589 | W: 50% | B: 50% | D: 0% | Len: 55 | PL: -0.0756 | VL: 0.1043 | Ent: 1.0347 | Time: 08:35:18
+Update 71/6098 | Steps: 1,164,258 | SPS: 37 | LWR: 54% | Pool:521 MCTS:69 | Games: 573 | W: 51% | B: 49% | D: 1% | Len: 56 | PL: -0.0763 | VL: 0.1086 | Ent: 1.0177 | Time: 08:42:50
+Update 72/6098 | Steps: 1,180,656 | SPS: 37 | LWR: 60% | Pool:553 MCTS:45 | Games: 581 | W: 50% | B: 49% | D: 0% | Len: 55 | PL: -0.0750 | VL: 0.1068 | Ent: 1.0146 | Time: 08:50:20
+Update 73/6098 | Steps: 1,197,054 | SPS: 37 | LWR: 55% | Pool:539 MCTS:67 | Games: 589 | W: 53% | B: 47% | D: 0% | Len: 54 | PL: -0.0760 | VL: 0.1110 | Ent: 1.0205 | Time: 08:57:43
+Update 74/6098 | Steps: 1,213,452 | SPS: 37 | LWR: 59% | Pool:548 MCTS:56 | Games: 587 | W: 48% | B: 52% | D: 0% | Len: 55 | PL: -0.0749 | VL: 0.1061 | Ent: 1.0196 | Time: 09:05:12
+Update 75/6098 | Steps: 1,229,850 | SPS: 37 | LWR: 54% | Pool:530 MCTS:62 | Games: 574 | W: 52% | B: 48% | D: 0% | Len: 56 | PL: -0.0772 | VL: 0.1068 | Ent: 1.0360 | Time: 09:12:37
+Update 76/6098 | Steps: 1,246,248 | SPS: 37 | LWR: 55% | Pool:541 MCTS:59 | Games: 582 | W: 50% | B: 49% | D: 1% | Len: 55 | PL: -0.0757 | VL: 0.1055 | Ent: 1.0160 | Time: 09:20:02
+Update 77/6098 | Steps: 1,262,646 | SPS: 37 | LWR: 56% | Pool:555 MCTS:51 | Games: 588 | W: 52% | B: 48% | D: 0% | Len: 55 | PL: -0.0749 | VL: 0.1086 | Ent: 1.0155 | Time: 09:27:22
+Update 78/6098 | Steps: 1,279,044 | SPS: 37 | LWR: 54% | Pool:540 MCTS:65 | Games: 589 | W: 51% | B: 49% | D: 0% | Len: 54 | PL: -0.0760 | VL: 0.1111 | Ent: 0.9992 | Time: 09:34:49
+Update 79/6098 | Steps: 1,295,442 | SPS: 37 | LWR: 61% | Pool:544 MCTS:60 | Games: 586 | W: 50% | B: 49% | D: 1% | Len: 55 | PL: -0.0745 | VL: 0.1055 | Ent: 1.0058 | Time: 09:42:05
+Update 80/6098 | Steps: 1,311,840 | SPS: 37 | LWR: 52% | Pool:539 MCTS:68 | Games: 592 | W: 51% | B: 48% | D: 1% | Len: 55 | PL: -0.0775 | VL: 0.1103 | Ent: 1.0066 | Time: 09:49:22
+Update 81/6098 | Steps: 1,328,238 | SPS: 37 | LWR: 54% | Pool:546 MCTS:57 | Games: 587 | W: 49% | B: 50% | D: 1% | Len: 55 | PL: -0.0780 | VL: 0.0996 | Ent: 1.0097 | Time: 09:56:40
+Update 82/6098 | Steps: 1,344,636 | SPS: 37 | LWR: 54% | Pool:521 MCTS:70 | Games: 573 | W: 53% | B: 46% | D: 0% | Len: 56 | PL: -0.0768 | VL: 0.1035 | Ent: 1.0190 | Time: 10:04:06
+Update 83/6098 | Steps: 1,361,034 | SPS: 37 | LWR: 54% | Pool:536 MCTS:63 | Games: 582 | W: 50% | B: 50% | D: 0% | Len: 55 | PL: -0.0770 | VL: 0.1094 | Ent: 1.0214 | Time: 10:11:35
+Update 84/6098 | Steps: 1,377,432 | SPS: 37 | LWR: 57% | Pool:545 MCTS:59 | Games: 587 | W: 48% | B: 52% | D: 0% | Len: 55 | PL: -0.0780 | VL: 0.1020 | Ent: 1.0214 | Time: 10:18:56
+Update 85/6098 | Steps: 1,393,830 | SPS: 37 | LWR: 54% | Pool:546 MCTS:58 | Games: 588 | W: 53% | B: 47% | D: 0% | Len: 55 | PL: -0.0758 | VL: 0.1042 | Ent: 1.0175 | Time: 10:26:26
+Update 86/6098 | Steps: 1,410,228 | SPS: 37 | LWR: 57% | Pool:551 MCTS:49 | Games: 582 | W: 52% | B: 48% | D: 0% | Len: 55 | PL: -0.0755 | VL: 0.1055 | Ent: 0.9867 | Time: 10:33:52
+Update 87/6098 | Steps: 1,426,626 | SPS: 37 | LWR: 56% | Pool:536 MCTS:67 | Games: 586 | W: 51% | B: 49% | D: 0% | Len: 55 | PL: -0.0756 | VL: 0.1052 | Ent: 0.9889 | Time: 10:41:17
+Update 88/6098 | Steps: 1,443,024 | SPS: 37 | LWR: 59% | Pool:527 MCTS:63 | Games: 575 | W: 53% | B: 47% | D: 0% | Len: 56 | PL: -0.0755 | VL: 0.1062 | Ent: 1.0068 | Time: 10:48:43
+Update 89/6098 | Steps: 1,459,422 | SPS: 37 | LWR: 57% | Pool:540 MCTS:62 | Games: 584 | W: 52% | B: 48% | D: 0% | Len: 55 | PL: -0.0750 | VL: 0.1054 | Ent: 1.0242 | Time: 10:56:06
+Update 90/6098 | Steps: 1,475,820 | SPS: 37 | LWR: 55% | Pool:527 MCTS:71 | Games: 581 | W: 53% | B: 47% | D: 0% | Len: 55 | PL: -0.0769 | VL: 0.1059 | Ent: 1.0151 | Time: 11:03:36
+Update 91/6098 | Steps: 1,492,218 | SPS: 37 | LWR: 58% | Pool:542 MCTS:62 | Games: 586 | W: 51% | B: 49% | D: 0% | Len: 55 | PL: -0.0753 | VL: 0.1081 | Ent: 1.0153 | Time: 11:11:00
+Update 92/6098 | Steps: 1,508,616 | SPS: 37 | LWR: 56% | Pool:534 MCTS:59 | Games: 575 | W: 47% | B: 53% | D: 0% | Len: 56 | PL: -0.0774 | VL: 0.1049 | Ent: 1.0150 | Time: 11:18:22
+Update 93/6098 | Steps: 1,525,014 | SPS: 37 | LWR: 57% | Pool:533 MCTS:68 | Games: 585 | W: 50% | B: 50% | D: 0% | Len: 55 | PL: -0.0771 | VL: 0.1067 | Ent: 1.0099 | Time: 11:25:57
+Update 94/6098 | Steps: 1,541,412 | SPS: 37 | LWR: 57% | Pool:544 MCTS:55 | Games: 581 | W: 51% | B: 49% | D: 0% | Len: 55 | PL: -0.0769 | VL: 0.1062 | Ent: 1.0189 | Time: 11:33:26
